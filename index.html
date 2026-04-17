@@ -3,143 +3,335 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaos Polos Premium Katun terbaru murah</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com" rel="stylesheet">
-    <style>
-        @import url('https://fonts.googleapis.com');
-        
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #FDFBF7; color: #4A4A4A; }
-        .heading-font { font-family: 'Unbounded', sans-serif; }
+    
+    <script src="lame.min.js"></script>
 
-        /* CSS SLIDER ENGINE */
-        .slider-container {
-            display: flex;
-            overflow-x: auto;
-            scroll-snap-type: x mandatory;
-            scroll-behavior: smooth;
-            -webkit-overflow-scrolling: touch;
+
+
+    <title>Pemotong Audio</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --secondary: #10b981;
+            --accent: #f43f5e;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
         }
-        .slider-container::-webkit-scrollbar { display: none; }
-        .slide {
-            flex: 0 0 100%;
-            scroll-snap-align: start;
-            height: 70vh;
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 15px;
+        }
+
+        .app-container {
+            background: var(--card);
+            width: 100%;
+            max-width: 500px;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+
+        h1 { font-size: 1.5rem; text-align: center; margin-bottom: 1.5rem; color: #818cf8; }
+
+        .drop-zone {
+            border: 2px dashed #475569;
+            border-radius: 1rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-bottom: 1.5rem;
+        }
+
+        .drop-zone:hover { border-color: var(--primary); background: #334155; }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group label { display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; }
+
+        input[type="number"] {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            padding: 0.7rem;
+            border-radius: 0.5rem;
+            outline: none;
+        }
+
+        .visualizer-container {
+            background: #0f172a;
+            height: 60px;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
             position: relative;
+        }
+
+        #progressLine {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: var(--accent);
+            display: none;
+        }
+
+        .button-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+
+        button {
+            width: 100%;
+            padding: 0.9rem;
+            border: none;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-preview { background: #334155; color: white; }
+        .btn-preview:hover { background: #475569; }
+        .btn-cut { background: var(--primary); color: white; }
+        .btn-cut:hover { opacity: 0.9; }
+        .btn-download { background: var(--secondary); color: white; display: none; text-decoration: none; }
+
+        #status { text-align: center; margin-top: 1rem; font-size: 0.85rem; color: #94a3b8; }
+
+        @media (max-width: 400px) {
+            .app-container { padding: 1.2rem; }
+            .controls { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
-<!-- NAVBAR -->
-    <nav class="flex justify-between items-center p-6 fixed top-0 w-full bg-[#FDFBF7]/90 backdrop-blur-md z-50 border-b border-gray-100">
-        <h1 class="heading-font text-lg font-bold tracking-tighter text-[#4A4A4A]">Kaos Polos</h1>
-        <!-- <div class="flex space-x-6 text-[#4A4A4A] font-bold text-xs uppercase tracking-widest">
-            <a href="#" class="hover:text-[#B8C1B0]">Shop</a>
-            <a href="#" class="hover:text-[#B8C1B0]">Lookbook</a>
-        </div> -->
-    </nav>
+<div class="app-container">
+    <h1>✂️ Audio Cutter Pro</h1>
 
-    <!-- CAROUSEL -->
-    <section class="relative">
-        <div class="slider-container" id="slider">
-            <!-- Slide 1 -->
-            <div class="slide bg-[#B8C1B0] flex items-center justify-center overflow-hidden">
-                <img src="https://img.freepik.com/premium-photo/blurry-background-clothing-store_198067-118917.jpg" class="absolute w-full h-full object-cover mix-blend-multiply opacity-50">
-                <div class="relative text-center text-white px-6">
-                    <h2 class="heading-font text-3xl md:text-5xl mb-4">Katun Soft</h2>
-                    <p class="text-xs uppercase tracking-[0.3em] mb-6">Koleksi Kaos Polos Katun Soft terbaru</p>
-                    <button class="bg-white text-[#B8C1B0] px-8 py-3 rounded-full font-bold text-[10px] uppercase shadow-xl">Beli</button>
-                </div>
-            </div>
-            <!-- Slide 2 -->
-            <div class="slide bg-[#E5C1C1] flex items-center justify-center overflow-hidden">
-                <img src="https://png.pngtree.com/thumb_back/fh260/background/20250910/pngtree-colorful-shirts-on-wooden-hangers-in-warm-inviting-clothing-store-display-image_19156145.webp" class="absolute w-full h-full object-cover mix-blend-multiply opacity-50">
-                <div class="relative text-center text-white px-6">
-                    <h2 class="heading-font text-3xl md:text-5xl mb-4">Katun Bambu</h2>
-                    <button class="bg-white text-[#E5C1C1] px-8 py-3 rounded-full font-bold text-[10px] uppercase shadow-xl">Explore</button>
-                </div>
-            </div>
-            <!-- Slide 3 -->
-            <div class="slide bg-[#C1D5E5] flex items-center justify-center overflow-hidden">
-                <img src="https://png.pngtree.com/thumb_back/fh260/background/20240408/pngtree-clothing-store-in-shopping-mall-boutique-shop-interior-blur-defocused-background-image_15650933.jpg" class="absolute w-full h-full object-cover mix-blend-multiply opacity-50">
-                <div class="relative text-center text-white px-6">
-                    <h2 class="heading-font text-3xl md:text-5xl mb-4">SKY BREEZE</h2>
-                    <button class="bg-white text-[#C1D5E5] px-8 py-3 rounded-full font-bold text-[10px] uppercase shadow-xl">Limited Drop</button>
-                </div>
-            </div>
-        </div>
-        <!-- Indicator Panah (Opsional) -->
-        <div class="absolute bottom-6 w-full flex justify-center space-x-2">
-            <div class="w-2 h-2 rounded-full bg-white opacity-50"></div>
-            <div class="w-8 h-2 rounded-full bg-white"></div>
-            <div class="w-2 h-2 rounded-full bg-white opacity-50"></div>
-        </div>
-    </section>
+    <label class="drop-zone" id="dropZone">
+        <span id="fileName">Pilih file MP3 / WAV / WebM</span>
+        <input type="file" id="audioInput" accept="audio/*, .webm" hidden>
+    </label>
 
-    <!-- PRODUK -->
-    <section class="py-16 px-6 max-w-7xl mx-auto">
-        <h3 class="heading-font text-center text-xl mb-10 uppercase tracking-tighter">Terbaru</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="group">
-                <div class="aspect-[3/4] rounded-[2rem] overflow-hidden bg-white mb-3 shadow-sm">
-                    <img src="https://img.lazcdn.com/g/p/7c5562f684ca85a943f7a7fdd2746264.png_720x720q80.png" class="w-full h-full object-cover">
-                </div>
-                <h4 class="text-[10px] font-bold uppercase text-gray-500">Katun Bambu</h4>
-                <p class="text-sm font-bold">Rp 199.000</p>
-            </div>
-            <div class="group">
-                <div class="aspect-[3/4] rounded-[2rem] overflow-hidden bg-white mb-3 shadow-sm">
-                    <img src="https://images.unsplash.com" class="w-full h-full object-cover">
-                </div>
-                <h4 class="text-[10px] font-bold uppercase text-gray-500">Minimal Hoodie</h4>
-                <p class="text-sm font-bold">Rp 349.000</p>
-            </div>
-            <div class="group">
-                <div class="aspect-[3/4] rounded-[2rem] overflow-hidden bg-[#B8C1B0]/20 mb-3 flex items-center justify-center italic text-[10px]">Product 3</div>
-            </div>
-            <div class="group">
-                <div class="aspect-[3/4] rounded-[2rem] overflow-hidden bg-[#E5C1C1]/20 mb-3 flex items-center justify-center italic text-[10px]">Product 4</div>
-            </div>
-        </div>
-    </section>
+    <div class="visualizer-container" id="viz">
+        <div id="progressLine"></div>
+        <span id="vizText" style="color:#475569; font-size: 0.8rem;">Preview Visualizer</span>
+    </div>
 
-    <!-- BAGIAN 3: KEUNGGULAN -->
-    <section class="bg-white py-16 px-6 rounded-t-[3rem]">
-        <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div class="text-center">
-                <div class="w-10 h-10 bg-[#B8C1B0]/20 text-[#B8C1B0] rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-leaf"></i>
-                </div>
-                <h4 class="font-bold text-xs uppercase mb-2">Sustainable</h4>
-                <p class="text-[10px] text-gray-400">Bahan organik ramah lingkungan.</p>
-            </div>
-            <div class="text-center">
-                <div class="w-10 h-10 bg-[#E5C1C1]/20 text-[#E5C1C1] rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-truck"></i>
-                </div>
-                <h4 class="font-bold text-xs uppercase mb-2">Fast Shipping</h4>
-                <p class="text-[10px] text-gray-400">Kirim di hari yang sama.</p>
-            </div>
-            <div class="text-center">
-                <div class="w-10 h-10 bg-[#C1D5E5]/20 text-[#C1D5E5] rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fa-solid fa-check"></i>
-                </div>
-                <h4 class="font-bold text-xs uppercase mb-2">Quality Control</h4>
-                <p class="text-[10px] text-gray-400">Melewati 3 kali tahap pengecekan.</p>
-            </div>
+    <div class="controls">
+        <div class="input-group">
+            <label>Mulai (detik)</label>
+            <input type="number" id="startTime" value="0" step="0.1">
         </div>
-    </section>
+        <div class="input-group">
+            <label>Durasi (detik)</label>
+            <input type="number" id="duration" value="5" step="0.1">
+        </div>
+    </div>
 
-    <!-- FOOTER -->
-    <footer class="p-10 text-center border-t border-gray-100">
-        <div class="flex justify-center space-x-8 mb-6 text-lg text-gray-400">
-            <a href="#" class="hover:text-[#1DA1F2] transition"><i class="fa-brands fa-twitter"></i></a>
-            <a href="#" class="hover:text-[#4267B2] transition"><i class="fa-brands fa-facebook"></i></a>
-            <a href="#" class="hover:text-[#E1306C] transition"><i class="fa-brands fa-instagram"></i></a>
+        <div class="button-stack">
+        <button class="btn-preview" onclick="togglePreview()" id="playBtn">▶️ Putar Preview</button>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn-cut" onclick="processCut('webm')" style="flex:1">✂️ Potong (WebM)</button>
+            <button class="btn-cut" onclick="processCut('mp3')" style="flex:1; background: #8b5cf6;">✂️ Potong (MP3)</button>
         </div>
-        <p class="text-[10px] text-gray-300 uppercase tracking-widest font-bold">&copy; 2026 Pastel.Co Distro</p>
-    </footer>
+        <a id="downloadLink" class="btn-download">💾 Download Hasil</a>
+    </div>
+
+
+    <div id="status">Siap digunakan</div>
+</div>
+
+<script>
+    let context = new (window.AudioContext || window.webkitAudioContext)();
+    let audioBuffer = null;
+    let sourceNode = null;
+    let isPlaying = false;
+
+    const audioInput = document.getElementById('audioInput');
+    const status = document.getElementById('status');
+    const playBtn = document.getElementById('playBtn');
+    const progressLine = document.getElementById('progressLine');
+
+    audioInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('fileName').innerText = file.name;
+        status.innerText = "Mendekode audio... mohon tunggu";
+        const arrayBuffer = await file.arrayBuffer();
+        audioBuffer = await context.decodeAudioData(arrayBuffer);
+        document.getElementById('vizText').style.display = 'none';
+        status.innerText = `Siap! Durasi: ${audioBuffer.duration.toFixed(2)} detik`;
+    });
+
+    function togglePreview() {
+        if (!audioBuffer) return alert("Pilih file dulu!");
+        if (isPlaying) {
+            stopPreview();
+        } else {
+            const start = parseFloat(document.getElementById('startTime').value);
+            const dur = parseFloat(document.getElementById('duration').value);
+            if (start + dur > audioBuffer.duration) return alert("Durasi melebihi batas file!");
+            sourceNode = context.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+            sourceNode.connect(context.destination);
+            sourceNode.start(0, start, dur);
+            isPlaying = true;
+            playBtn.innerText = "⏹️ Hentikan";
+            progressLine.style.display = 'block';
+            progressLine.style.transition = `none`;
+            progressLine.style.left = '0%';
+            setTimeout(() => {
+                progressLine.style.transition = `left ${dur}s linear`;
+                progressLine.style.left = '100%';
+            }, 50);
+            sourceNode.onended = () => stopPreview();
+        }
+    }
+
+    function stopPreview() {
+        if (sourceNode) { sourceNode.stop(); sourceNode = null; }
+        isPlaying = false;
+        playBtn.innerText = "▶️ Putar Preview";
+        progressLine.style.display = 'none';
+    }
+
+               async function processCut(type = 'webm') {
+        if (!audioBuffer) return alert("Pilih file audio terlebih dahulu!");
+        stopPreview();
+
+        const start = parseFloat(document.getElementById('startTime').value);
+        const dur = parseFloat(document.getElementById('duration').value);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        if (start + dur > audioBuffer.duration) {
+            return alert("Durasi potongan melebihi panjang lagu!");
+        }
+
+        status.innerText = `Memproses ke ${type.toUpperCase()}... mohon tunggu`;
+
+        // DEKLARASI ASLI ANDA (Tetap dipertahankan)
+        const frameCount = Math.floor(dur * sampleRate);
+        const newBuffer = context.createBuffer(audioBuffer.numberOfChannels, frameCount, sampleRate);
+
+        for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+            const data = audioBuffer.getChannelData(i);
+            const newData = newBuffer.getChannelData(i);
+            const offset = Math.floor(start * sampleRate);
+            for (let j = 0; j < frameCount; j++) {
+                newData[j] = data[j + offset] || 0;
+            }
+        }
+
+        if (type === 'webm') {
+            // --- LOGIKA WEBM (Metode Recorder) ---
+            const dest = context.createMediaStreamDestination();
+            const bufferSource = context.createBufferSource();
+            bufferSource.buffer = newBuffer;
+            bufferSource.connect(dest);
+
+            const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+            const chunks = [];
+
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            recorder.onstop = () => {
+                const webmBlob = new Blob(chunks, { type: 'audio/webm' });
+                showDownloadLink(webmBlob, 'webm');
+            };
+
+            recorder.start();
+            bufferSource.start();
+            
+            setTimeout(() => {
+                recorder.stop();
+                bufferSource.stop();
+            }, (dur * 1000) + 200);
+
+        } else if (type === 'mp3') {
+            // --- LOGIKA MP3 (Menggunakan lamejs Lokal) ---
+            try {
+                // Inisialisasi Encoder
+                const channels = newBuffer.numberOfChannels;
+                const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+                const mp3Data = [];
+
+                // Ambil data channel
+                const left = newBuffer.getChannelData(0);
+                const right = channels > 1 ? newBuffer.getChannelData(1) : left;
+
+                // Konversi Float32 ke Int16 (WAJIB agar tidak loading terus)
+                const toInt16 = (f32) => {
+                    let i = f32.length, res = new Int16Array(i);
+                    while (i--) {
+                        let s = Math.max(-1, Math.min(1, f32[i]));
+                        res[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                    return res;
+                };
+
+                const lInt = toInt16(left);
+                const rInt = toInt16(right);
+                
+                // Proses per blok 1152 sampel
+                const blockSize = 1152;
+                for (let i = 0; i < lInt.length; i += blockSize) {
+                    const lChunk = lInt.subarray(i, i + blockSize);
+                    const rChunk = rInt.subarray(i, i + blockSize);
+                    const mp3buf = mp3encoder.encodeBuffer(lChunk, rChunk);
+                    if (mp3buf.length > 0) {
+                        mp3Data.push(new Int8Array(mp3buf));
+                    }
+                }
+
+                // Flush sisa buffer
+                const last = mp3encoder.flush();
+                if (last.length > 0) {
+                    mp3Data.push(new Int8Array(last));
+                }
+
+                const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
+                showDownloadLink(mp3Blob, 'mp3');
+
+            } catch (err) {
+                console.error("Error Encoding MP3:", err);
+                status.innerText = "Error: Pastikan file lame.min.js sudah terload.";
+            }
+        }
+    }
+
+    function showDownloadLink(blob, ext) {
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById('downloadLink');
+        dl.href = url;
+        dl.download = `cut_audio_${Date.now()}.${ext}`;
+        dl.style.display = "flex";
+        dl.innerText = `💾 Download Hasil (.${ext})`;
+        status.innerText = `Selesai! Format ${ext.toUpperCase()} siap.`;
+    }
+
+</script>
 
 </body>
 </html>
