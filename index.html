@@ -111,10 +111,7 @@
             <label>Audio 1:</label>
             <input type="file" id="file1" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
         </div>
-        <div class="audio-card" style="border-left-color: #e74c3c;">
-            <label>Audio 2:</label>
-            <input type="file" id="file2" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
-        </div>
+        
     </div>
 
     <div class="controls">
@@ -128,187 +125,162 @@
     </div>
     <p id="status" style="text-align: center; color: #aaa; margin-top: 10px;"></p>
 </div>
-
 <script>
-    window.addEventListener('DOMContentLoaded', () => {
-        if (typeof lamejs === 'undefined') {
-            alert("⚠️ File 'lame.min.js' tidak ditemukan!\n\nProses ke MP3 tidak akan berfungsi.");
-            // Nonaktifkan tombol MP3 agar tidak error
-            document.getElementById('btnMP3').disabled = true;
-            document.getElementById('btnMP3').style.opacity = "0.5";
-        }
-    });
-    
-    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let currentSource = null;
-    let isPlaying = false;
-    let resultBlob = null;
-    const canvas = document.getElementById('visualizer');
-    const ctx = canvas.getContext('2d');
+// Pastikan library lamejs sudah dipanggil di HTML (misal via CDN)
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let currentSource = null;
+let isPlaying = false;
+let resultBlob = null;
+const canvas = document.getElementById('visualizer');
+const ctx = canvas.getContext('2d');
 
-    // 1. Fungsi Tambah Audio (Maksimal 5)
-    document.getElementById('btnAdd').onclick = function() {
-        const container = document.getElementById('audioInputs');
-        const count = container.getElementsByClassName('audio-card').length;
-        if (count < 5) {
-            const div = document.createElement('div');
-            div.className = 'audio-card';
-            div.style.borderLeftColor = ['#f1c40f', '#9b59b6', '#1abc9c'][count-2];
-            div.innerHTML = `<label>Audio ${count + 1}:</label> <input type="file" class="audio-file" accept="audio/*,.mp3,.wav,.webm">`;
-            container.appendChild(div);
-        } else {
-            alert("Maksimal 5 audio");
-        }
-    };
+// 1. Fungsi Tambah Audio (Maksimal 5)
+document.getElementById('btnAdd').onclick = function() {
+    const container = document.getElementById('audioInputs');
+    const count = container.getElementsByClassName('audio-card').length;
+    if (count < 5) {
+        const div = document.createElement('div');
+        div.className = 'audio-card';
+        div.style.borderLeft = "5px solid " + ['#f1c40f', '#9b59b6', '#1abc9c', '#e74c3c'][count-1];
+        div.innerHTML = `<label>Audio ${count + 1}:</label> <input type="file" class="audio-file" accept="audio/*,.mp3,.wav,.webm">`;
+        container.appendChild(div);
+    } else {
+        alert("Maksimal 5 audio");
+    }
+};
 
-    // 2. Fungsi Menggabungkan Audio
-    async function mergeAudio() {
-        const inputs = document.querySelectorAll('.audio-file');
-        let buffers = [];
-        for (let input of inputs) {
-            if (input.files[0]) {
-                const arrayBuf = await input.files[0].arrayBuffer();
-                const decoded = await audioCtx.decodeAudioData(arrayBuf);
-                buffers.push(decoded);
-            }
+// 2. Fungsi Menggabungkan Audio (Output AudioBuffer)
+async function mergeAudio() {
+    const inputs = document.querySelectorAll('.audio-file');
+    let buffers = [];
+    for (let input of inputs) {
+        if (input.files[0]) {
+            const arrayBuf = await input.files[0].arrayBuffer();
+            const decoded = await audioCtx.decodeAudioData(arrayBuf);
+            buffers.push(decoded);
         }
-        if (buffers.length === 0) return null;
+    }
+    if (buffers.length === 0) return null;
 
-        let totalLen = buffers.reduce((acc, b) => acc + b.length, 0);
-        let out = audioCtx.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
-        
-        for (let i = 0; i < out.numberOfChannels; i++) {
-            let offset = 0;
-            for (let b of buffers) {
-                out.getChannelData(i).set(b.getChannelData(i), offset);
-                offset += b.length;
-            }
-        }
-        return out;
-    }
+    let totalLen = buffers.reduce((acc, b) => acc + b.length, 0);
+    // Buat buffer stereo (2 channel)
+    let out = audioCtx.createBuffer(2, totalLen, buffers[0].sampleRate);
     
-    function startVisualizer(source) {
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        function draw() {
-            if (!isPlaying) return ctx.clearRect(0, 0, canvas.width, canvas.height);
-            requestAnimationFrame(draw);
-            analyser.getByteFrequencyData(dataArray);
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            let x = 0;
-            for(let i = 0; i < dataArray.length; i++) {
-                let barHeight = dataArray[i]/2;
-                ctx.fillStyle = `rgb(79, 70, 229)`;
-                ctx.fillRect(x, canvas.height - barHeight, (canvas.width/dataArray.length)*2.5, barHeight);
-                x += (canvas.width/dataArray.length)*2.5 + 1;
-            }
+    for (let i = 0; i < out.numberOfChannels; i++) {
+        let offset = 0;
+        for (let b of buffers) {
+            // Jika audio input mono tapi output stereo, salin ke kedua channel
+            let channelData = (b.numberOfChannels > i) ? b.getChannelData(i) : b.getChannelData(0);
+            out.getChannelData(i).set(channelData, offset);
+            offset += b.length;
         }
-        draw();
     }
-    
-    // 4. Preview Button
-    async function togglePreview() {
-        if (isPlaying) {
-            currentSource.stop();
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
-            document.getElementById('status').innerText = "Berhenti Memutar Preview";
-            return;
-        }
-        const merged = await mergeAudio();
-        if (!merged) return alert("Pilih file audio dulu!");
+    return out;
+}
 
-        currentSource = audioCtx.createBufferSource();
-        currentSource.buffer = merged;
-        isPlaying = true;
-        document.getElementById('playBtn').innerText = "⏹️ Berhenti";
-        document.getElementById('status').innerText = "Memutar Preview...";
-        startVisualizer(currentSource);
-        currentSource.start();
-        currentSource.onended = () => {
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
-            document.getElementById('status').innerText = "Berhenti Memutar Preview";
-        };
+// 3. Fungsi Visualizer & Preview
+function startVisualizer(source) {
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    function draw() {
+        if (!isPlaying) return ctx.clearRect(0, 0, canvas.width, canvas.height);
+        requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        let x = 0;
+        for(let i = 0; i < dataArray.length; i++) {
+            let barHeight = dataArray[i]/2;
+            ctx.fillStyle = `rgb(79, 70, 229)`;
+            ctx.fillRect(x, canvas.height - barHeight, (canvas.width/dataArray.length)*2.5, barHeight);
+            x += (canvas.width/dataArray.length)*2.5 + 1;
+        }
     }
-    
-    function checkFiles() {
-        const inputs = [document.getElementById('file1'), document.getElementById('file2'), ...document.querySelectorAll('.audio-file')];
-        return inputs.some(input => input && input.files && input.files.length > 0);
+    draw();
+}
+
+document.getElementById('playBtn').onclick = async function() {
+    if (isPlaying) {
+        currentSource.stop();
+        isPlaying = false;
+        this.innerText = "▶️ Putar Preview";
+        return;
     }
-    
-    // 5. Proses ke WebM (Native)
-     document.querySelector('.btn-proses:nth-child(1)').onclick = async function() {
-    if (!checkFiles()) {
-            alert("Gagal: Tidak ada file audio yang dipilih untuk diproses ke WebM.");
-            return;
-    }
-    document.getElementById('btnWebM').onclick = async () => {
-        const merged = await mergeAudio();
-        if (!merged) return;
-        const dest = audioCtx.createMediaStreamDestination();
-        const source = audioCtx.createBufferSource();
-        source.buffer = merged;
-        source.connect(dest);
-        const recorder = new MediaRecorder(dest.stream);
-        const chunks = [];
-        recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = () => {
-            resultBlob = new Blob(chunks, {type: 'audio/webm'});
-            enableDownload("SamAu-nteste05.webm");
-        };
-        recorder.start();
-        source.start();
-        source.onended = () => recorder.stop();
-        document.getElementById('status').innerText = "Memproses WebM...";
+    const merged = await mergeAudio();
+    if (!merged) return alert("Pilih file audio dulu!");
+    currentSource = audioCtx.createBufferSource();
+    currentSource.buffer = merged;
+    isPlaying = true;
+    this.innerText = "⏹️ Berhenti";
+    startVisualizer(currentSource);
+    currentSource.start();
+    currentSource.onended = () => {
+        isPlaying = false;
+        this.innerText = "▶️ Putar Preview";
     };
 };
-    // 6. Proses ke MP3 (lame.min.js)
-    document.querySelector('.btn-proses:nth-child(2)').onclick = async function() {
-    if (!checkFiles()) {
-            alert("Gagal: Tidak ada file audio yang dipilih untuk diproses ke WebM.");
-            return;
-    }
-    document.getElementById('btnMP3').onclick = async () => {
-        const merged = await mergeAudio();
-        if (!merged) return;
-        document.getElementById('status').innerText = "Memproses MP3...";
-        
-        const mp3encoder = new lamejs.Mp3Encoder(1, merged.sampleRate, 128);
-        const samples = merged.getChannelData(0);
-        const int16 = new Int16Array(samples.length);
-        for(let i=0; i<samples.length; i++) {
-            int16[i] = samples[i] < 0 ? samples[i] * 0x8000 : samples[i] * 0x7FFF;
-        }
 
-        const mp3Data = [];
-        for (let i = 0; i < int16.length; i += 1152) {
-            let chunk = int16.subarray(i, i + 1152);
-            let mp3buf = mp3encoder.encodeBuffer(chunk);
-            if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf));
+// 4. Proses ke MP3 (Stereo Fix)
+document.getElementById('btnMP3').onclick = async function() {
+    const merged = await mergeAudio();
+    if (!merged) return alert("Pilih audio dulu!");
+    
+    document.getElementById('status').innerText = "Memproses MP3 (Stereo)...";
+    
+    // Inisialisasi Encoder: 2 Channel (Stereo), SampleRate, Bitrate 128kbps
+    const mp3encoder = new lamejs.Mp3Encoder(2, merged.sampleRate, 128);
+    
+    // Ambil data channel kiri dan kanan
+    const left = merged.getChannelData(0);
+    const right = merged.getChannelData(1);
+    
+    // Konversi Float32 ke Int16
+    const convertFloatToInt16 = (buffer) => {
+        let l = buffer.length;
+        let buf = new Int16Array(l);
+        while (l--) {
+            let s = Math.max(-1, Math.min(1, buffer[l]));
+            buf[l] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
-        mp3Data.push(new Uint8Array(mp3encoder.flush()));
-        resultBlob = new Blob(mp3Data, {type: 'audio/mp3'});
-        enableDownload("SamAu-nteste05.mp3");
-    };
+        return buf;
     };
 
-    function enableDownload(name) {
-        document.getElementById('status').innerText = "Proses Selesai!";
-        const btn = document.getElementById('btnDownload');
-        btn.disabled = false;
-        btn.onclick = () => {
-            const url = URL.createObjectURL(resultBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.click();
-        };
+    const leftInt16 = convertFloatToInt16(left);
+    const rightInt16 = convertFloatToInt16(right);
+    
+    const mp3Data = [];
+    const sampleBlockSize = 1152; // Standar frame MP3
+    
+    for (let i = 0; i < leftInt16.length; i += sampleBlockSize) {
+        let leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+        let rightChunk = rightInt16.subarray(i, i + sampleBlockSize);
+        // Encode menggunakan buffer kiri dan kanan terpisah untuk Stereo
+        let mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+        if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf));
     }
+    
+    const endBuf = mp3encoder.flush();
+    if (endBuf.length > 0) mp3Data.push(new Uint8Array(endBuf));
+    
+    resultBlob = new Blob(mp3Data, {type: 'audio/mp3'});
+    enableDownload("Hasil-Audio.mp3");
+};
+
+function enableDownload(name) {
+    document.getElementById('status').innerText = "Proses Selesai!";
+    const btn = document.getElementById('btnDownload');
+    btn.disabled = false;
+    btn.onclick = () => {
+        const url = URL.createObjectURL(resultBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+    };
+}
 </script>
 </body>
 </html>
