@@ -316,7 +316,8 @@
         showCancelUI("Rendering MP3...");
 
         try {
-            const tempCtx = new AudioContext();
+            const SAMPLERATE = 44100; // Definisi global di dalam fungsi
+            const tempCtx = new AudioContext({ sampleRate: SAMPLERATE });
             const tracks = [];
             let maxDur = 0;
 
@@ -344,7 +345,9 @@
             
             if (tracks.length === 0) return resetUI("Tidak ada file untuk diproses.");
 
-            const offCtx = new OfflineAudioContext(2, Math.ceil(44100 * maxDur), 44100);
+            
+const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLERATE);
+
             tracks.forEach(t => {
                 const s = offCtx.createBufferSource();
                 const g = offCtx.createGain();
@@ -355,7 +358,7 @@
                 s.connect(g);
                 g.connect(panNode);
                 panNode.connect(offCtx.destination);
-                s.start(t.delay);
+                s.start(0 + t.delay);
             });
 
             const renderedBuffer = await offCtx.startRendering();
