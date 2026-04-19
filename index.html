@@ -110,7 +110,6 @@
 
 <div class="app-container">
     <p>*) File tidak dikirim ke server. Semua proses terjadi di browser Anda.</p>
-    <small><p>*) Jika proses ke mp3: delay track 1 tambah 0.5, delay track 2 tambah 1</p></small>
     <canvas id="visualizer"></canvas>
     <button style="margin-bottom: 20px">🎛 Tambah Track</button>
     <div class="track-card">
@@ -224,7 +223,7 @@
                 
                 source.buffer = audioBuf;
                 gainNode.gain.value = document.getElementById(`vol${i}`).value;
-                panner.pan.value = -(parseFloat(document.getElementById(`pan${i}`).value));
+                panner.pan.value = parseFloat(document.getElementById(`pan${i}`).value);
                 
                 source.connect(gainNode);
                 gainNode.connect(panner);
@@ -292,7 +291,7 @@
                 
                 source.buffer = audioBuf;
                 gainNode.gain.value = document.getElementById(`vol${i}`).value;
-                panner.pan.value = -(parseFloat(document.getElementById(`pan${i}`).value));
+                panner.pan.value = parseFloat(document.getElementById(`pan${i}`).value);
                 
                 source.connect(gainNode);
                 gainNode.connect(panner);
@@ -329,7 +328,7 @@
                 if (f) {
                     const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
                     const v = parseFloat(document.getElementById(`vol${i}`).value);
-                    const p = -(parseFloat(document.getElementById(`pan${i}`).value));
+                    const p = parseFloat(document.getElementById(`pan${i}`).value);
                     const buf = await f.arrayBuffer();
                     const audioBuf = await tempCtx.decodeAudioData(buf);
                     
