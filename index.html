@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Mixer Studio</title>
+    <title>AMiS: Audio Mixer Studio</title>
     
     <script src="lame.min.js"></script>
     <style>
@@ -91,6 +91,15 @@
             border-radius: 0.5rem;
             outline: none;
         }
+        input[type="file"] {
+            width: 80%;
+            color: white;
+            outline: none;
+            border: 2px dashed #475569;
+            border-radius: 1rem;
+            padding: 10px;
+            text-align: center;
+        }
         @media screen and (min-width: 769px) {
             body {width: 100%; align-items: center}
             .app-container { padding: 1.2rem; }
@@ -100,8 +109,9 @@
 <body>
 
 <div class="app-container">
+    <p>*) File tidak dikirim ke server. Semua proses terjadi di browser Anda.</p>
     <canvas id="visualizer"></canvas>
-    <button>Tambah track</button>
+    <button style="margin-bottom: 20px">🎛 Tambah Track</button>
     <div class="track-card">
         <label>Track 1:</label>
         <input type="file" id="file1" accept="audio/*,.mp3,.wav,.webm">
@@ -130,14 +140,16 @@
 </div>
 
 <script>
+    // Deklarasi tetap sesuai permintaan
     let audioCtx, analyser, recorder, chunks;
     let trackCount = 2;
     const maxTracks = 5;
+    let isCancelled = false;
 
+    // --- FUNGSI TAMBAH TRACK ---
     document.querySelector('button:not([class])').onclick = () => {
         if (trackCount >= maxTracks) return alert("Maksimal 5 track!");
         trackCount++;
-        
         const container = document.querySelector('.app-container');
         const btnControls = document.querySelector('.controls');
         const newTrack = document.createElement('div');
@@ -147,51 +159,124 @@
             <label>Track ${trackCount}:</label>
             <input type="file" id="file${trackCount}" accept="audio/*,.mp3,.wav,.webm">
             <br><br>
-            <label>Delay:</label>
-            <input type="number" id="delay${trackCount}" value="0" min="0" step="0.1">
+                <label>Delay:</label>
+                <input type="number" id="delay${trackCount}" value="0" min="0" step="0.1">
+                <div style = "display:flex; flex-direction: column; margin-top:10px;">
+                <label>Vol:</label>
+                <input type="range" id="vol${trackCount}" min="0" max="1" step="0.01" value="0.8">
+                <label>Pan:</label>
+                <input type="range" id="pan${trackCount}" min="-1" max="1" step="0.1" value="0"></div>
         `;
         container.insertBefore(newTrack, btnControls);
     };
-    
+
+    // Tambahkan input volume secara manual ke track 1 dan 2 yang sudah ada di HTML
+    document.querySelectorAll('.track-card').forEach((card, index) => {
+        const id = index + 1;
+        if(!document.getElementById(`vol${id}`) || !document.getElementById(`pan${id}`)) {
+            const div = document.createElement('div');
+            div.style = "display:flex; flex-direction: column; margin-top:10px;";
+            div.innerHTML = `<label>Vol:</label><input type="range" id="vol${id}" min="0" max="1" step="0.01" value="0.8">
+            <label>Pan:</label>
+<input type="range" id="pan${id}" min="-1" max="1" step="0.1" value="0">`;
+
+            card.appendChild(div);
+        }
+    });
+
+    // --- FUNGSI PREVIEW ---
     async function togglePreview() {
         const playBtn = document.getElementById('playBtn');
-        if (audioCtx && audioCtx.state === 'running') {
+        
+
+        if (audioCtx && audioCtx.state !== 'closed') {
             await audioCtx.close();
+            audioCtx = null;
             playBtn.innerText = "▶️ Putar Preview";
+            document.getElementById('status').innerText = "Preview Berhenti";
             return;
         }
+        
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+        }
+        
+        
         analyser = audioCtx.createAnalyser();
         analyser.connect(audioCtx.destination);
         setupVisualizer();
+        
+        let maxDur = 0;
+        let hasFile = false;
+        let longestSource = null;
 
         for (let i = 1; i <= trackCount; i++) {
-            const fileInput = document.getElementById(`file${i}`);
-            if (fileInput.files[0]) {
-                const buf = await fileInput.files[0].arrayBuffer();
+            const f = document.getElementById(`file${i}`).files[0];
+            if (f) {
+                hasFile = true;
+                const buf = await f.arrayBuffer();
                 const audioBuf = await audioCtx.decodeAudioData(buf);
                 const source = audioCtx.createBufferSource();
-                const delay = parseFloat(document.getElementById(`delay${i}`).value) || 0;
+                const gainNode = audioCtx.createGain();
+                const panner = audioCtx.createStereoPanner();
+                
                 source.buffer = audioBuf;
-                source.connect(analyser);
+                gainNode.gain.value = document.getElementById(`vol${i}`).value;
+                panner.pan.value = -(parseFloat(document.getElementById(`pan${i}`).value));
+                
+                source.connect(gainNode);
+                gainNode.connect(panner);
+                panner.connect(analyser);
+                
+                const delay = parseFloat(document.getElementById(`delay${i}`).value) || 0;
                 source.start(audioCtx.currentTime + delay);
+                
+                const totalDur = delay + audioBuf.duration;
+                if (totalDur > maxDur) {
+                    maxDur = totalDur;
+                    longestSource = source;
+                }
             }
         }
-        playBtn.innerText = "⏹️ Berhenti";
+        if (hasFile && longestSource) {
+        playBtn.innerText = "⏹️ Berhenti Preview";
+        document.getElementById('status').innerText = "Preview berjalan";
+        
+        // 2. LOGIKA OTOMATIS KEMBALI (Event onended)
+        longestSource.onended = () => {
+            // Cek apakah konteks masih ada (bukan ditutup manual)
+            if (audioCtx && audioCtx.state !== 'closed') {
+                audioCtx.close();
+                audioCtx = null;
+                playBtn.innerText = "▶️ Putar Preview";
+                document.getElementById('status').innerText = "Preview Selesai";
+            }
+        };
+    } else {
+        await audioCtx.close();
+        audioCtx = null;
+        document.getElementById('status').innerText = "Pilih file dulu!";
+    }
+        
+        
     }
     
-    const btnProcessWebM = document.querySelectorAll('.btn-proses')[0];
-    btnProcessWebM.onclick = async () => {
+    const btnWebM = document.querySelectorAll('.btn-proses')[0];
+    btnWebM.onclick = async () => {
+        isCancelled = false;
         if (audioCtx) await audioCtx.close();
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx = new AudioContext();
         const dest = audioCtx.createMediaStreamDestination();
         chunks = [];
         analyser = audioCtx.createAnalyser();
         setupVisualizer();
 
         recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
-        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-        recorder.onstop = () => setupDownload(new Blob(chunks, { type: 'audio/webm' }), 'nteste05_mixing.webm');
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = () => {
+            if(!isCancelled) setupDownload(new Blob(chunks, { type: 'audio/webm' }), 'hasil_mixing.webm');
+        };
 
         let maxDur = 0;
         for (let i = 1; i <= trackCount; i++) {
@@ -200,95 +285,117 @@
                 const buf = await f.arrayBuffer();
                 const audioBuf = await audioCtx.decodeAudioData(buf);
                 const source = audioCtx.createBufferSource();
-                const delay = parseFloat(document.getElementById(`delay${i}`).value) || 0;
+                const gainNode = audioCtx.createGain();
+                const panner = audioCtx.createStereoPanner();
+                const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
+                
                 source.buffer = audioBuf;
-                source.connect(dest);
-                source.connect(audioCtx.destination);
-                source.connect(analyser);
-                source.start(audioCtx.currentTime + delay);
-                maxDur = Math.max(maxDur, delay + audioBuf.duration);
+                gainNode.gain.value = document.getElementById(`vol${i}`).value;
+                panner.pan.value = -(parseFloat(document.getElementById(`pan${i}`).value));
+                
+                source.connect(gainNode);
+                gainNode.connect(panner);
+                panner.connect(dest);
+                panner.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                source.start(audioCtx.currentTime + d);
+                maxDur = Math.max(maxDur, d + audioBuf.duration);
             }
         }
-        status.innerText = "Merekam WebM...";
+        showCancelUI("Merekam WebM...");
         recorder.start();
-        setTimeout(() => recorder.stop(), maxDur * 1000 + 500);
+        const tOut = setTimeout(() => { if(!isCancelled) recorder.stop(); }, maxDur * 1000 + 500);
+        window.cancelProcess = () => { isCancelled = true; recorder.stop(); clearTimeout(tOut); audioCtx.close(); resetUI("Dibatalkan."); };
     };
-    
-    const btnProcessMP3 = document.querySelectorAll('.btn-proses')[1];
-    btnProcessMP3.onclick = async () => {
-        if (typeof lamejs === 'undefined') {
-            document.getElementById('status').innerText = "Gagal memuat Encoder MP3.";
-            return;
-        }
+
+    // --- PROSES KE MP3 (LAMEJS + VOLUME + CANCEL) ---
+    const btnMP3 = document.querySelectorAll('.btn-proses')[1];
+    btnMP3.onclick = async () => {
+        if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
+        isCancelled = false;
+        showCancelUI("Rendering MP3...");
 
         try {
-            document.getElementById('status').innerText = "Rendering MP3...";
             const tempCtx = new AudioContext();
             const tracks = [];
-            let maxDuration = 0;
+            let maxDur = 0;
 
             for (let i = 1; i <= trackCount; i++) {
                 const f = document.getElementById(`file${i}`).files[0];
+                
                 if (f) {
                     const buf = await f.arrayBuffer();
                     const audioBuf = await tempCtx.decodeAudioData(buf);
                     const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                    tracks.push({ buffer: audioBuf, delay: d });
-                    maxDuration = Math.max(maxDuration, audioBuf.duration + d);
+                    const v = parseFloat(document.getElementById(`vol${i}`).value);
+                    const p = parseFloat(document.getElementById(`pan${i}`).value);
+                    tracks.push({ 
+                buffer: audioBuf, 
+                delay: d, 
+                volume: v, 
+                pan: p 
+            });
+                    maxDur = Math.max(maxDur, audioBuf.duration + d);
                 }
             }
 
-            const offlineCtx = new OfflineAudioContext(2, 44100 * maxDuration, 44100);
+            const offCtx = new OfflineAudioContext(2, 44100 * maxDur, 44100);
             tracks.forEach(t => {
-                const s = offlineCtx.createBufferSource();
+                const s = offCtx.createBufferSource();
+                const g = offCtx.createGain();
+                const panNode = offCtx.createStereoPanner();
                 s.buffer = t.buffer;
-                s.connect(offlineCtx.destination);
+                g.gain.value = t.volume;
+                panNode.pan.value = t.pan;
+                s.connect(g);
+                g.connect(panNode);
+                panNode.connect(offCtx.destination);
                 s.start(t.delay);
             });
 
-            const renderedBuffer = await offlineCtx.startRendering();
+            const renderedBuffer = await offCtx.startRendering();
+            if (isCancelled) return;
+
             const mp3encoder = new lamejs.Mp3Encoder(2, 44100, 128);
             const left = renderedBuffer.getChannelData(0);
             const right = renderedBuffer.getChannelData(1);
-            
-            const convert = f => { let s = Math.max(-1, Math.min(1, f)); return s < 0 ? s * 0x8000 : s * 0x7FFF; };
             const mp3Data = [];
+
+            showCancelUI("Encoding MP3...");
             for (let i = 0; i < left.length; i += 1152) {
+                if (isCancelled) return;
                 const lChunk = new Int16Array(1152), rChunk = new Int16Array(1152);
                 for(let j=0; j<1152 && (i+j)<left.length; j++) {
-                    lChunk[j] = convert(left[i+j]);
-                    rChunk[j] = convert(right[i+j]);
+                    const conv = f => { let s = Math.max(-1, Math.min(1, f)); return s < 0 ? s * 0x8000 : s * 0x7FFF; };
+                    lChunk[j] = conv(left[i+j]);
+                    rChunk[j] = conv(right[i+j]);
                 }
-                const mp3buf = mp3encoder.encodeBuffer(lChunk, rChunk);
-                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+                const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
+                if (buf.length > 0) mp3Data.push(buf);
             }
             mp3Data.push(mp3encoder.flush());
-            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'nteste05_mixing.mp3');
-
-        } catch (err) {
-            console.error(err);
-            alert("Terjadi kesalahan saat memproses MP3: " + err.message);
-        }
+            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasil_mixing.mp3');
+        } catch (e) { resetUI("Error: " + e.message); }
+        window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
     };
 
+    function showCancelUI(msg) {
+        document.getElementById('status').innerHTML = `${msg} <button onclick="cancelProcess()" style="width:auto; padding:5px 10px; background:var(--accent); display:inline-block; border-radius:5px">Batal</button>`;
+    }
+    function resetUI(msg) { document.getElementById('status').innerText = msg; }
     function setupDownload(blob, filename) {
         const url = URL.createObjectURL(blob);
-        const btnDownload = document.getElementById('btnDownload');
-        btnDownload.disabled = false;
-        btnDownload.onclick = () => {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-        };
-        document.getElementById('status').innerText = "Selesai!";
+        const btn = document.getElementById('btnDownload');
+        btn.disabled = false;
+        btn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); };
+        document.getElementById('status').innerText = "Siap diunduh!";
     }
-
     function setupVisualizer() {
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         function draw() {
+            if (audioCtx.state === 'closed') return;
             requestAnimationFrame(draw);
             analyser.getByteFrequencyData(dataArray);
             ctx.fillStyle = '#0f172a';
@@ -296,7 +403,7 @@
             let x = 0;
             for(let i = 0; i < dataArray.length; i++) {
                 let barHeight = dataArray[i]/2;
-                ctx.fillStyle = `rgb(50, 150, ${barHeight + 100})`;
+                ctx.fillStyle = `rgb(79, 70, 229)`;
                 ctx.fillRect(x, canvas.height - barHeight, (canvas.width/dataArray.length)*2.5, barHeight);
                 x += (canvas.width/dataArray.length)*2.5 + 1;
             }
@@ -304,6 +411,7 @@
         draw();
     }
 </script>
+
 
 </body>
 </html>
