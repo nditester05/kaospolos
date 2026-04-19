@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TrekBinder: Audio Mixer Studio</title>
+    <title>SambungAudio: Aplikasi sambung audio</title>
     
     <script src="lame.min.js"></script>
     <style>
@@ -35,7 +35,7 @@
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
             margin-bottom: 30px;
         }
-        .track-card {
+        .audio-card {
             background: #334155;
             padding: 15px;
             margin-bottom: 10px;
@@ -82,15 +82,7 @@
         .btn-proses { background: var(--primary); color: white; }
         .btn-proses:hover { opacity: 0.9; }
         button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
-        input[type="number"] {
-            width: 30%;
-            background: #0f172a;
-            border: 1px solid #334155;
-            color: white;
-            padding: 0.7rem;
-            border-radius: 0.5rem;
-            outline: none;
-        }
+        
         input[type="file"] {
             width: 80%;
             color: white;
@@ -104,35 +96,33 @@
             body {width: 100%; align-items: center}
             .app-container { padding: 1.2rem; }
         }
+        
     </style>
 </head>
 <body>
-
 <div class="app-container">
     <p>*) File tidak dikirim ke server. Semua proses terjadi di browser Anda.</p>
     <canvas id="visualizer"></canvas>
-    <button style="margin-bottom: 20px">🎛 Tambah Track</button>
-    <div class="track-card">
-        <label>Track 1:</label>
-        <input type="file" id="file1" accept="audio/*,.mp3,.wav,.webm">
-        <br><br>
-        <label>Delay:</label>
-        <input type="number" id="delay1" value="0" min="0" step="0.1">
-    </div>
-
-    <div class="track-card" style="border-left-color: #e74c3c;">
-        <label>Track 2:</label>
-        <input type="file" id="file2" accept="audio/*,.mp3,.wav,.webm">
-        <br><br>
-        <label>Delay:</label>
-        <input type="number" id="delay2" value="0" min="0" step="0.1">
+    <!-- Tambahkan ID pada tombol agar bisa dimanipulasi -->
+    <button id="btnAdd" style="margin-bottom: 20px">🎛 Tambah Audio</button>
+    
+    <div id="audioInputs">
+        <div class="audio-card">
+            <label>Audio 1:</label>
+            <input type="file" id="file1" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
+        </div>
+        <div class="audio-card" style="border-left-color: #e74c3c;">
+            <label>Audio 2:</label>
+            <input type="file" id="file2" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
+        </div>
     </div>
 
     <div class="controls">
         <button class="btn-preview" onclick="togglePreview()" id="playBtn">▶️ Putar Preview</button>
         <div class="controls2">
-            <button class="btn-proses" id="btnProcess" style="flex:1; ">Proses ke (WebM)</button>
-            <button class="btn-proses" id="btnProcess" style="flex:1; background: #8b5cf6;">Proses ke (MP3)</button>
+            <!-- Tombol WebM dan MP3 dibedakan id-nya -->
+            <button class="btn-proses" id="btnWebM" style="flex:1;">Proses ke (WebM)</button>
+            <button class="btn-proses" id="btnMP3" style="flex:1; background: #8b5cf6;">Proses ke (MP3)</button>
         </div>
         <button id="btnDownload" disabled>💾 Download Hasil</button>
     </div>
@@ -140,270 +130,71 @@
 </div>
 
 <script>
-    // Deklarasi tetap sesuai permintaan
-    let audioCtx, analyser, recorder, chunks;
-    let trackCount = 2;
-    const maxTracks = 5;
-    let isCancelled = false;
-
-    // --- FUNGSI TAMBAH TRACK ---
-    document.querySelector('button:not([class])').onclick = () => {
-        if (trackCount >= maxTracks) return alert("Maksimal 5 track!");
-        trackCount++;
-        const container = document.querySelector('.app-container');
-        const btnControls = document.querySelector('.controls');
-        const newTrack = document.createElement('div');
-        newTrack.className = 'track-card';
-        newTrack.style.borderLeftColor = trackCount % 2 === 0 ? '#e74c3c' : '#3498db';
-        newTrack.innerHTML = `
-            <label>Track ${trackCount}:</label>
-            <input type="file" id="file${trackCount}" accept="audio/*,.mp3,.wav,.webm">
-            <br><br>
-                <label>Delay:</label>
-                <input type="number" id="delay${trackCount}" value="0" min="0" step="0.1">
-                <div style = "display:flex; flex-direction: column; margin-top:10px;">
-                <label>Vol:</label>
-                <input type="range" id="vol${trackCount}" min="0" max="1" step="0.01" value="0.8">
-                <label>Pan:</label>
-                <input type="range" id="pan${trackCount}" min="-1" max="1" step="0.1" value="0"></div>
-        `;
-        container.insertBefore(newTrack, btnControls);
-    };
-
-    // Tambahkan input volume secara manual ke track 1 dan 2 yang sudah ada di HTML
-    document.querySelectorAll('.track-card').forEach((card, index) => {
-        const id = index + 1;
-        if(!document.getElementById(`vol${id}`) || !document.getElementById(`pan${id}`)) {
-            const div = document.createElement('div');
-            div.style = "display:flex; flex-direction: column; margin-top:10px;";
-            div.innerHTML = `<label>Vol:</label><input type="range" id="vol${id}" min="0" max="1" step="0.01" value="0.8">
-            <label>Pan:</label>
-<input type="range" id="pan${id}" min="-1" max="1" step="0.1" value="0">`;
-
-            card.appendChild(div);
+    window.addEventListener('DOMContentLoaded', () => {
+        if (typeof lamejs === 'undefined') {
+            alert("⚠️ File 'lame.min.js' tidak ditemukan!\n\nProses ke MP3 tidak akan berfungsi.");
+            // Nonaktifkan tombol MP3 agar tidak error
+            document.getElementById('btnMP3').disabled = true;
+            document.getElementById('btnMP3').style.opacity = "0.5";
         }
     });
+    
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let currentSource = null;
+    let isPlaying = false;
+    let resultBlob = null;
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
 
-    // --- FUNGSI PREVIEW ---
-    async function togglePreview() {
-        const playBtn = document.getElementById('playBtn');
-        
-
-        if (audioCtx && audioCtx.state !== 'closed') {
-            await audioCtx.close();
-            audioCtx = null;
-            playBtn.innerText = "▶️ Putar Preview";
-            document.getElementById('status').innerText = "Preview Berhenti";
-            return;
+    // 1. Fungsi Tambah Audio (Maksimal 5)
+    document.getElementById('btnAdd').onclick = function() {
+        const container = document.getElementById('audioInputs');
+        const count = container.getElementsByClassName('audio-card').length;
+        if (count < 5) {
+            const div = document.createElement('div');
+            div.className = 'audio-card';
+            div.style.borderLeftColor = ['#f1c40f', '#9b59b6', '#1abc9c'][count-2];
+            div.innerHTML = `<label>Audio ${count + 1}:</label> <input type="file" class="audio-file" accept="audio/*,.mp3,.wav,.webm">`;
+            container.appendChild(div);
+        } else {
+            alert("Maksimal 5 audio");
         }
-        
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-        }
-        
-        
-        analyser = audioCtx.createAnalyser();
-        analyser.connect(audioCtx.destination);
-        setupVisualizer();
-        
-        let maxDur = 0;
-        let hasFile = false;
-        let longestSource = null;
+    };
 
-        for (let i = 1; i <= trackCount; i++) {
-            const f = document.getElementById(`file${i}`).files[0];
-            if (f) {
-                hasFile = true;
-                const buf = await f.arrayBuffer();
-                const audioBuf = await audioCtx.decodeAudioData(buf);
-                const source = audioCtx.createBufferSource();
-                const gainNode = audioCtx.createGain();
-                const panner = audioCtx.createStereoPanner();
-                
-                source.buffer = audioBuf;
-                gainNode.gain.value = document.getElementById(`vol${i}`).value;
-                panner.pan.value = parseFloat(document.getElementById(`pan${i}`).value);
-                
-                source.connect(gainNode);
-                gainNode.connect(panner);
-                panner.connect(analyser);
-                
-                const delay = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                source.start(audioCtx.currentTime + delay);
-                
-                const totalDur = delay + audioBuf.duration;
-                if (totalDur > maxDur) {
-                    maxDur = totalDur;
-                    longestSource = source;
-                }
+    // 2. Fungsi Menggabungkan Audio
+    async function mergeAudio() {
+        const inputs = document.querySelectorAll('.audio-file');
+        let buffers = [];
+        for (let input of inputs) {
+            if (input.files[0]) {
+                const arrayBuf = await input.files[0].arrayBuffer();
+                const decoded = await audioCtx.decodeAudioData(arrayBuf);
+                buffers.push(decoded);
             }
         }
-        if (hasFile && longestSource) {
-        playBtn.innerText = "⏹️ Berhenti Preview";
-        document.getElementById('status').innerText = "Preview berjalan";
+        if (buffers.length === 0) return null;
+
+        let totalLen = buffers.reduce((acc, b) => acc + b.length, 0);
+        let out = audioCtx.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
         
-        // 2. LOGIKA OTOMATIS KEMBALI (Event onended)
-        longestSource.onended = () => {
-            // Cek apakah konteks masih ada (bukan ditutup manual)
-            if (audioCtx && audioCtx.state !== 'closed') {
-                audioCtx.close();
-                audioCtx = null;
-                playBtn.innerText = "▶️ Putar Preview";
-                document.getElementById('status').innerText = "Preview Selesai";
+        for (let i = 0; i < out.numberOfChannels; i++) {
+            let offset = 0;
+            for (let b of buffers) {
+                out.getChannelData(i).set(b.getChannelData(i), offset);
+                offset += b.length;
             }
-        };
-    } else {
-        await audioCtx.close();
-        audioCtx = null;
-        document.getElementById('status').innerText = "Pilih file dulu!";
-    }
-        
-        
+        }
+        return out;
     }
     
-    const btnWebM = document.querySelectorAll('.btn-proses')[0];
-    btnWebM.onclick = async () => {
-        isCancelled = false;
-        if (audioCtx) await audioCtx.close();
-        audioCtx = new AudioContext();
-        const dest = audioCtx.createMediaStreamDestination();
-        chunks = [];
-        analyser = audioCtx.createAnalyser();
-        setupVisualizer();
-
-        recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
-        recorder.ondataavailable = (e) => chunks.push(e.data);
-        recorder.onstop = () => {
-            if(!isCancelled) setupDownload(new Blob(chunks, { type: 'audio/webm' }), 'hasilmixing_trekbindernteste05.webm');
-        };
-
-        let maxDur = 0;
-        for (let i = 1; i <= trackCount; i++) {
-            const f = document.getElementById(`file${i}`).files[0];
-            if (f) {
-                const buf = await f.arrayBuffer();
-                const audioBuf = await audioCtx.decodeAudioData(buf);
-                const source = audioCtx.createBufferSource();
-                const gainNode = audioCtx.createGain();
-                const panner = audioCtx.createStereoPanner();
-                const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                
-                source.buffer = audioBuf;
-                gainNode.gain.value = document.getElementById(`vol${i}`).value;
-                panner.pan.value = parseFloat(document.getElementById(`pan${i}`).value);
-                
-                source.connect(gainNode);
-                gainNode.connect(panner);
-                panner.connect(dest);
-                panner.connect(analyser);
-                analyser.connect(audioCtx.destination);
-                source.start(audioCtx.currentTime + d);
-                maxDur = Math.max(maxDur, d + audioBuf.duration);
-            }
-        }
-        showCancelUI("Merekam WebM...");
-        recorder.start();
-        const tOut = setTimeout(() => { if(!isCancelled) recorder.stop(); }, maxDur * 1000 + 500);
-        window.cancelProcess = () => { isCancelled = true; recorder.stop(); clearTimeout(tOut); audioCtx.close(); resetUI("Dibatalkan."); };
-    };
-
-    // --- PROSES KE MP3 (LAMEJS + VOLUME + CANCEL) ---
-    const btnMP3 = document.querySelectorAll('.btn-proses')[1];
-    btnMP3.onclick = async () => {
-        if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
-        isCancelled = false;
-        showCancelUI("Rendering MP3...");
-
-        try {
-            const SAMPLERATE = 44100; // Definisi global di dalam fungsi
-            const tempCtx = new AudioContext({ sampleRate: SAMPLERATE });
-            const tracks = [];
-            let maxDur = 0;
-
-            for (let i = 1; i <= trackCount; i++) {
-                const fileInput = document.getElementById(`file${i}`);
-                const f = fileInput.files[0];
-                
-                if (f) {
-                    const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                    const v = parseFloat(document.getElementById(`vol${i}`).value);
-                    const p = parseFloat(document.getElementById(`pan${i}`).value);
-                    const buf = await f.arrayBuffer();
-                    const audioBuf = await tempCtx.decodeAudioData(buf);
-                    
-                    tracks.push({ 
-                buffer: audioBuf, 
-                delay: d, 
-                volume: v, 
-                pan: p 
-            });
-                    if (d + audioBuf.duration > maxDur) {
-                    maxDur = d + audioBuf.duration;}
-                }
-            }
-            
-            if (tracks.length === 0) return resetUI("Tidak ada file untuk diproses.");
-
-            
-const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLERATE);
-
-            tracks.forEach(t => {
-                const s = offCtx.createBufferSource();
-                const g = offCtx.createGain();
-                const panNode = offCtx.createStereoPanner();
-                s.buffer = t.buffer;
-                g.gain.value = t.volume;
-                panNode.pan.value = t.pan;
-                s.connect(g);
-                g.connect(panNode);
-                panNode.connect(offCtx.destination);
-                s.start(0 + t.delay);
-            });
-
-            const renderedBuffer = await offCtx.startRendering();
-            if (isCancelled) return;
-
-            const mp3encoder = new lamejs.Mp3Encoder(2, 44100, 128);
-            const left = renderedBuffer.getChannelData(0);
-            const right = renderedBuffer.getChannelData(1);
-            const mp3Data = [];
-
-            showCancelUI("Encoding MP3...");
-            for (let i = 0; i < left.length; i += 1152) {
-                if (isCancelled) return;
-                const lChunk = new Int16Array(1152), rChunk = new Int16Array(1152);
-                for(let j=0; j<1152 && (i+j)<left.length; j++) {
-                    const conv = f => { let s = Math.max(-1, Math.min(1, f)); return s < 0 ? s * 0x8000 : s * 0x7FFF; };
-                    lChunk[j] = conv(left[i+j]);
-                    rChunk[j] = conv(right[i+j]);
-                }
-                const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
-                if (buf.length > 0) mp3Data.push(buf);
-            }
-            mp3Data.push(mp3encoder.flush());
-            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasilmixing_trekbindernteste05.mp3');
-        } catch (e) { resetUI("Error: " + e.message); }
-        window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
-    };
-
-    function showCancelUI(msg) {
-        document.getElementById('status').innerHTML = `${msg} <button onclick="cancelProcess()" style="width:auto; padding:5px 10px; background:var(--accent); display:inline-block; border-radius:5px">Batal</button>`;
-    }
-    function resetUI(msg) { document.getElementById('status').innerText = msg; }
-    function setupDownload(blob, filename) {
-        const url = URL.createObjectURL(blob);
-        const btn = document.getElementById('btnDownload');
-        btn.disabled = false;
-        btn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); };
-        document.getElementById('status').innerText = "Siap diunduh!";
-    }
-    function setupVisualizer() {
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
+    function startVisualizer(source) {
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         function draw() {
-            if (audioCtx.state === 'closed') return;
+            if (!isPlaying) return ctx.clearRect(0, 0, canvas.width, canvas.height);
             requestAnimationFrame(draw);
             analyser.getByteFrequencyData(dataArray);
             ctx.fillStyle = '#0f172a';
@@ -418,8 +209,106 @@ const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLE
         }
         draw();
     }
+    
+    // 4. Preview Button
+    async function togglePreview() {
+        if (isPlaying) {
+            currentSource.stop();
+            isPlaying = false;
+            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
+            document.getElementById('status').innerText = "Berhenti Memutar Preview";
+            return;
+        }
+        const merged = await mergeAudio();
+        if (!merged) return alert("Pilih file audio dulu!");
+
+        currentSource = audioCtx.createBufferSource();
+        currentSource.buffer = merged;
+        isPlaying = true;
+        document.getElementById('playBtn').innerText = "⏹️ Berhenti";
+        document.getElementById('status').innerText = "Memutar Preview...";
+        startVisualizer(currentSource);
+        currentSource.start();
+        currentSource.onended = () => {
+            isPlaying = false;
+            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
+            document.getElementById('status').innerText = "Berhenti Memutar Preview";
+        };
+    }
+    
+    function checkFiles() {
+        const inputs = [document.getElementById('file1'), document.getElementById('file2'), ...document.querySelectorAll('.audio-file')];
+        return inputs.some(input => input && input.files && input.files.length > 0);
+    }
+    
+    // 5. Proses ke WebM (Native)
+     document.querySelector('.btn-proses:nth-child(1)').onclick = async function() {
+    if (!checkFiles()) {
+            alert("Gagal: Tidak ada file audio yang dipilih untuk diproses ke WebM.");
+            return;
+    }
+    document.getElementById('btnWebM').onclick = async () => {
+        const merged = await mergeAudio();
+        if (!merged) return;
+        const dest = audioCtx.createMediaStreamDestination();
+        const source = audioCtx.createBufferSource();
+        source.buffer = merged;
+        source.connect(dest);
+        const recorder = new MediaRecorder(dest.stream);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = () => {
+            resultBlob = new Blob(chunks, {type: 'audio/webm'});
+            enableDownload("SamAu-nteste05.webm");
+        };
+        recorder.start();
+        source.start();
+        source.onended = () => recorder.stop();
+        document.getElementById('status').innerText = "Memproses WebM...";
+    };
+};
+    // 6. Proses ke MP3 (lame.min.js)
+    document.querySelector('.btn-proses:nth-child(2)').onclick = async function() {
+    if (!checkFiles()) {
+            alert("Gagal: Tidak ada file audio yang dipilih untuk diproses ke WebM.");
+            return;
+    }
+    document.getElementById('btnMP3').onclick = async () => {
+        const merged = await mergeAudio();
+        if (!merged) return;
+        document.getElementById('status').innerText = "Memproses MP3...";
+        
+        const mp3encoder = new lamejs.Mp3Encoder(1, merged.sampleRate, 128);
+        const samples = merged.getChannelData(0);
+        const int16 = new Int16Array(samples.length);
+        for(let i=0; i<samples.length; i++) {
+            int16[i] = samples[i] < 0 ? samples[i] * 0x8000 : samples[i] * 0x7FFF;
+        }
+
+        const mp3Data = [];
+        for (let i = 0; i < int16.length; i += 1152) {
+            let chunk = int16.subarray(i, i + 1152);
+            let mp3buf = mp3encoder.encodeBuffer(chunk);
+            if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf));
+        }
+        mp3Data.push(new Uint8Array(mp3encoder.flush()));
+        resultBlob = new Blob(mp3Data, {type: 'audio/mp3'});
+        enableDownload("SamAu-nteste05.mp3");
+    };
+    };
+
+    function enableDownload(name) {
+        document.getElementById('status').innerText = "Proses Selesai!";
+        const btn = document.getElementById('btnDownload');
+        btn.disabled = false;
+        btn.onclick = () => {
+            const url = URL.createObjectURL(resultBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.click();
+        };
+    }
 </script>
-
-
 </body>
 </html>
