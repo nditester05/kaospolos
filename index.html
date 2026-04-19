@@ -308,104 +308,81 @@
         window.cancelProcess = () => { isCancelled = true; recorder.stop(); clearTimeout(tOut); audioCtx.close(); resetUI("Dibatalkan."); };
     };
 
+    // --- PROSES KE MP3 (LAMEJS + VOLUME + CANCEL) ---
     const btnMP3 = document.querySelectorAll('.btn-proses')[1];
-btnMP3.onclick = async () => {
-    if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
-    isCancelled = false;
-    showCancelUI("Rendering MP3...");
+    btnMP3.onclick = async () => {
+        if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
+        isCancelled = false;
+        showCancelUI("Rendering MP3...");
 
-    try {
-        const tempCtx = new AudioContext();
-        const tracks = [];
-        let maxDur = 0;
+        try {
+            const tempCtx = new AudioContext();
+            const tracks = [];
+            let maxDur = 0;
 
-        // 1. Ambil semua data SECARA PARALEL untuk mencegah pergeseran waktu
-        for (let i = 1; i <= trackCount; i++) {
-            const fileInput = document.getElementById(`file${i}`);
-            const f = fileInput.files[0];
-            
-            if (f) {
-                // Ambil nilai UI SEBELUM masuk ke proses async
-                const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                const v = parseFloat(document.getElementById(`vol${i}`).value);
-                const p = -(parseFloat(document.getElementById(`pan${i}`).value));
-
-                const buf = await f.arrayBuffer();
-                const audioBuf = await tempCtx.decodeAudioData(buf);
+            for (let i = 1; i <= trackCount; i++) {
+                const fileInput = document.getElementById(`file${i}`);
+                const f = fileInput.files[0];
                 
-                tracks.push({ 
-                    buffer: audioBuf, 
-                    delay: d, 
-                    volume: v, 
-                    pan: p 
-                });
-                
-                // Kalkulasi durasi total yang presisi
-                if (d + audioBuf.duration > maxDur) {
-                    maxDur = d + audioBuf.duration;
+                if (f) {
+                    const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
+                    const v = parseFloat(document.getElementById(`vol${i}`).value);
+                    const p = -(parseFloat(document.getElementById(`pan${i}`).value));
+                    const buf = await f.arrayBuffer();
+                    const audioBuf = await tempCtx.decodeAudioData(buf);
+                    
+                    tracks.push({ 
+                buffer: audioBuf, 
+                delay: d, 
+                volume: v, 
+                pan: p 
+            });
+                    if (d + audioBuf.duration > maxDur) {
+                    maxDur = d + audioBuf.duration;}
                 }
             }
-        }
-
-        if (tracks.length === 0) return resetUI("Tidak ada file untuk diproses.");
-
-        // 2. Gunakan OfflineAudioContext dengan buffer ekstra 0.1 detik untuk keamanan
-        const sampleRate = 44100;
-        const offCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * (maxDur + 0.1)), sampleRate);
-
-        tracks.forEach(t => {
-            const s = offCtx.createBufferSource();
-            const g = offCtx.createGain();
-            const panNode = offCtx.createStereoPanner();
             
-            s.buffer = t.buffer;
-            g.gain.value = t.volume;
-            panNode.pan.value = t.pan;
-            
-            s.connect(g);
-            g.connect(panNode);
-            panNode.connect(offCtx.destination);
-            
-            // PAKSA START PADA DETIK KE-T (TANPA CURRENTTIME)
-            s.start(t.delay); 
-        });
+            if (tracks.length === 0) return resetUI("Tidak ada file untuk diproses.");
 
-        const renderedBuffer = await offCtx.startRendering();
-        if (isCancelled) return;
+            const offCtx = new OfflineAudioContext(2, Math.ceil(44100 * maxDur), 44100);
+            tracks.forEach(t => {
+                const s = offCtx.createBufferSource();
+                const g = offCtx.createGain();
+                const panNode = offCtx.createStereoPanner();
+                s.buffer = t.buffer;
+                g.gain.value = t.volume;
+                panNode.pan.value = t.pan;
+                s.connect(g);
+                g.connect(panNode);
+                panNode.connect(offCtx.destination);
+                s.start(t.delay);
+            });
 
-        // 3. ENCODING MP3
-        const mp3encoder = new lamejs.Mp3Encoder(2, sampleRate, 128);
-        const left = renderedBuffer.getChannelData(0);
-        const right = renderedBuffer.getChannelData(1);
-        const mp3Data = [];
-
-        showCancelUI("Encoding MP3...");
-        const sampleBlockSize = 1152;
-        for (let i = 0; i < left.length; i += sampleBlockSize) {
+            const renderedBuffer = await offCtx.startRendering();
             if (isCancelled) return;
-            const lChunk = new Int16Array(sampleBlockSize);
-            const rChunk = new Int16Array(sampleBlockSize);
-            
-            for(let j = 0; j < sampleBlockSize && (i + j) < left.length; j++) {
-                // Konversi Float32 ke Int16 yang akurat
-                let l = left[i+j];
-                let r = right[i+j];
-                lChunk[j] = l < 0 ? l * 0x8000 : l * 0x7FFF;
-                rChunk[j] = r < 0 ? r * 0x8000 : r * 0x7FFF;
+
+            const mp3encoder = new lamejs.Mp3Encoder(2, 44100, 128);
+            const left = renderedBuffer.getChannelData(0);
+            const right = renderedBuffer.getChannelData(1);
+            const mp3Data = [];
+
+            showCancelUI("Encoding MP3...");
+            for (let i = 0; i < left.length; i += 1152) {
+                if (isCancelled) return;
+                const lChunk = new Int16Array(1152), rChunk = new Int16Array(1152);
+                for(let j=0; j<1152 && (i+j)<left.length; j++) {
+                    const conv = f => { let s = Math.max(-1, Math.min(1, f)); return s < 0 ? s * 0x8000 : s * 0x7FFF; };
+                    lChunk[j] = conv(left[i+j]);
+                    rChunk[j] = conv(right[i+j]);
+                }
+                const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
+                if (buf.length > 0) mp3Data.push(buf);
             }
-            const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
-            if (buf.length > 0) mp3Data.push(buf);
-        }
-        mp3Data.push(mp3encoder.flush());
-        
-        setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasil_mixing_presisi.mp3');
-
-    } catch (e) { 
-        console.error(e);
-        resetUI("Error: " + e.message); 
-    }
-};
-
+            mp3Data.push(mp3encoder.flush());
+            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasilmixing_trekbindernteste05.mp3');
+        } catch (e) { resetUI("Error: " + e.message); }
+        window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
+    };
 
     function showCancelUI(msg) {
         document.getElementById('status').innerHTML = `${msg} <button onclick="cancelProcess()" style="width:auto; padding:5px 10px; background:var(--accent); display:inline-block; border-radius:5px">Batal</button>`;
