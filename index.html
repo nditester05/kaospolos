@@ -358,7 +358,7 @@ const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLE
                 s.connect(g);
                 g.connect(panNode);
                 panNode.connect(offCtx.destination);
-                s.start(0 + t.delay);
+                s.start(0 + t.delay + 0.5);
             });
 
             const renderedBuffer = await offCtx.startRendering();
