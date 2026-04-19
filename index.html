@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMiS: Audio Mixer Studio</title>
+    <title>TrekBinder: Audio Mixer Studio</title>
     
     <script src="lame.min.js"></script>
     <style>
@@ -110,6 +110,7 @@
 
 <div class="app-container">
     <p>*) File tidak dikirim ke server. Semua proses terjadi di browser Anda.</p>
+    <small><p>*) Jika proses ke mp3: delay track 1 tambah 0.5, delay track 2 tambah 1</p></small>
     <canvas id="visualizer"></canvas>
     <button style="margin-bottom: 20px">🎛 Tambah Track</button>
     <div class="track-card">
@@ -310,104 +311,82 @@
 
     // --- PROSES KE MP3 (LAMEJS + VOLUME + CANCEL) ---
     const btnMP3 = document.querySelectorAll('.btn-proses')[1];
-btnMP3.onclick = async () => {
-    if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
-    isCancelled = false;
-    showCancelUI("Rendering MP3...");
+    btnMP3.onclick = async () => {
+        if (typeof lamejs === 'undefined') return alert("Lame.min.js tidak terload!");
+        isCancelled = false;
+        showCancelUI("Rendering MP3...");
 
-    try {
-        const SAMPLERATE = 44100;
-        // Paksa context awal ke sample rate yang sama
-        const tempCtx = new AudioContext({ sampleRate: SAMPLERATE });
-        
-        // 1. Kumpulkan semua janji (promises) proses file
-        const trackPromises = [];
+        try {
+            const SAMPLERATE = 44100; // Definisi global di dalam fungsi
+            const tempCtx = new AudioContext({ sampleRate: SAMPLERATE });
+            const tracks = [];
+            let maxDur = 0;
 
-        for (let i = 1; i <= trackCount; i++) {
-            const f = document.getElementById(`file${i}`).files[0];
-            if (f) {
-                // Ambil nilai UI SEKARANG agar tidak berubah saat proses async
-                const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
-                const v = parseFloat(document.getElementById(`vol${i}`).value);
-                const p = -(parseFloat(document.getElementById(`pan${i}`).value));
-
-                // Masukkan proses decode ke dalam array promises
-                const promise = f.arrayBuffer()
-                    .then(buf => tempCtx.decodeAudioData(buf))
-                    .then(audioBuf => ({
-                        buffer: audioBuf,
-                        delay: d,
-                        volume: v,
-                        pan: p
-                    }));
-                trackPromises.push(promise);
+            for (let i = 1; i <= trackCount; i++) {
+                const fileInput = document.getElementById(`file${i}`);
+                const f = fileInput.files[0];
+                
+                if (f) {
+                    const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
+                    const v = parseFloat(document.getElementById(`vol${i}`).value);
+                    const p = -(parseFloat(document.getElementById(`pan${i}`).value));
+                    const buf = await f.arrayBuffer();
+                    const audioBuf = await tempCtx.decodeAudioData(buf);
+                    
+                    tracks.push({ 
+                buffer: audioBuf, 
+                delay: d, 
+                volume: v, 
+                pan: p 
+            });
+                    if (d + audioBuf.duration > maxDur) {
+                    maxDur = d + audioBuf.duration;}
+                }
             }
-        }
-
-        // 2. Jalankan semua proses secara PARALEL
-        const tracks = await Promise.all(trackPromises);
-        
-        if (tracks.length === 0) return resetUI("Tidak ada file.");
-
-        // 3. Hitung maxDur dari hasil yang sudah jadi
-        let maxDur = 0;
-        tracks.forEach(t => {
-            if (t.delay + t.buffer.duration > maxDur) {
-                maxDur = t.delay + t.buffer.duration;
-            }
-        });
-
-        // 4. Mulai Offline Rendering
-        const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLERATE);
-        tracks.forEach(t => {
-            const s = offCtx.createBufferSource();
-            const g = offCtx.createGain();
-            const panNode = offCtx.createStereoPanner();
             
-            s.buffer = t.buffer;
-            g.gain.value = t.volume;
-            panNode.pan.value = t.pan;
+            if (tracks.length === 0) return resetUI("Tidak ada file untuk diproses.");
+
             
-            s.connect(g);
-            g.connect(panNode);
-            panNode.connect(offCtx.destination);
-            
-            // Start absolut pada t.delay
-            s.start(t.delay);
-        });
+const offCtx = new OfflineAudioContext(2, Math.ceil(SAMPLERATE * maxDur), SAMPLERATE);
 
-        const renderedBuffer = await offCtx.startRendering();
-        if (isCancelled) return;
+            tracks.forEach(t => {
+                const s = offCtx.createBufferSource();
+                const g = offCtx.createGain();
+                const panNode = offCtx.createStereoPanner();
+                s.buffer = t.buffer;
+                g.gain.value = t.volume;
+                panNode.pan.value = t.pan;
+                s.connect(g);
+                g.connect(panNode);
+                panNode.connect(offCtx.destination);
+                s.start(0 + t.delay);
+            });
 
-        // 5. Encoding MP3 (Sama seperti kode sebelumnya)
-        const mp3encoder = new lamejs.Mp3Encoder(2, SAMPLERATE, 128);
-        const left = renderedBuffer.getChannelData(0);
-        const right = renderedBuffer.getChannelData(1);
-        const mp3Data = [];
-
-        showCancelUI("Encoding MP3...");
-        for (let i = 0; i < left.length; i += 1152) {
+            const renderedBuffer = await offCtx.startRendering();
             if (isCancelled) return;
-            const lChunk = new Int16Array(1152), rChunk = new Int16Array(1152);
-            for(let j=0; j<1152 && (i+j)<left.length; j++) {
-                const conv = f => { 
-                    let s = Math.max(-1, Math.min(1, f)); 
-                    return s < 0 ? s * 0x8000 : s * 0x7FFF; 
-                };
-                lChunk[j] = conv(left[i+j]);
-                rChunk[j] = conv(right[i+j]);
-            }
-            const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
-            if (buf.length > 0) mp3Data.push(buf);
-        }
-        mp3Data.push(mp3encoder.flush());
-        setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasil_mixing_paralel.mp3');
 
-    } catch (e) { 
-        resetUI("Error: " + e.message); 
-    }
-    window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
-};
+            const mp3encoder = new lamejs.Mp3Encoder(2, 44100, 128);
+            const left = renderedBuffer.getChannelData(0);
+            const right = renderedBuffer.getChannelData(1);
+            const mp3Data = [];
+
+            showCancelUI("Encoding MP3...");
+            for (let i = 0; i < left.length; i += 1152) {
+                if (isCancelled) return;
+                const lChunk = new Int16Array(1152), rChunk = new Int16Array(1152);
+                for(let j=0; j<1152 && (i+j)<left.length; j++) {
+                    const conv = f => { let s = Math.max(-1, Math.min(1, f)); return s < 0 ? s * 0x8000 : s * 0x7FFF; };
+                    lChunk[j] = conv(left[i+j]);
+                    rChunk[j] = conv(right[i+j]);
+                }
+                const buf = mp3encoder.encodeBuffer(lChunk, rChunk);
+                if (buf.length > 0) mp3Data.push(buf);
+            }
+            mp3Data.push(mp3encoder.flush());
+            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasilmixing_trekbindernteste05.mp3');
+        } catch (e) { resetUI("Error: " + e.message); }
+        window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
+    };
 
     function showCancelUI(msg) {
         document.getElementById('status').innerHTML = `${msg} <button onclick="cancelProcess()" style="width:auto; padding:5px 10px; background:var(--accent); display:inline-block; border-radius:5px">Batal</button>`;
