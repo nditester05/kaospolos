@@ -275,7 +275,7 @@
         recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
         recorder.ondataavailable = (e) => chunks.push(e.data);
         recorder.onstop = () => {
-            if(!isCancelled) setupDownload(new Blob(chunks, { type: 'audio/webm' }), 'hasil_mixing.webm');
+            if(!isCancelled) setupDownload(new Blob(chunks, { type: 'audio/webm' }), 'hasilmixing_trekbindernteste05.webm');
         };
 
         let maxDur = 0;
@@ -328,18 +328,18 @@
                     const audioBuf = await tempCtx.decodeAudioData(buf);
                     const d = parseFloat(document.getElementById(`delay${i}`).value) || 0;
                     const v = parseFloat(document.getElementById(`vol${i}`).value);
-                    const p = parseFloat(document.getElementById(`pan${i}`).value);
+                    const p = -(parseFloat(document.getElementById(`pan${i}`).value));
                     tracks.push({ 
                 buffer: audioBuf, 
                 delay: d, 
                 volume: v, 
                 pan: p 
             });
-                    maxDur = Math.max(maxDur, audioBuf.duration + d);
+                    maxDur = Math.max(maxDur, d + audioBuf.duration);
                 }
             }
 
-            const offCtx = new OfflineAudioContext(2, 44100 * maxDur, 44100);
+            const offCtx = new OfflineAudioContext(2, Math.ceil(44100 * maxDur), 44100);
             tracks.forEach(t => {
                 const s = offCtx.createBufferSource();
                 const g = offCtx.createGain();
@@ -374,7 +374,7 @@
                 if (buf.length > 0) mp3Data.push(buf);
             }
             mp3Data.push(mp3encoder.flush());
-            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasil_mixing.mp3');
+            setupDownload(new Blob(mp3Data, { type: 'audio/mp3' }), 'hasilmixing_trekbindernteste05.mp3');
         } catch (e) { resetUI("Error: " + e.message); }
         window.cancelProcess = () => { isCancelled = true; resetUI("Dibatalkan."); };
     };
