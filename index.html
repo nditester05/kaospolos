@@ -2,291 +2,177 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SambungAudio: Aplikasi sambung audio</title>
-    
-    <script src="lame.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Mini Mobile Legend Style</title>
     <style>
-        :root {
-            --primary: #4f46e5;
-            --secondary: #10b981;
-            --accent: #f43f5e;
-            --bg: #0f172a;
-            --card: #1e293b;
-            --text: #f8fafc;
-        }
-        * {box-sizing: border-box;}
-        body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 0 15px;
-            display: flex;
-            flex-direction: column;
-            align-content: center;
-            min-height: 100vh;
-        }
-        .app-container {
-            background: var(--card);
-            max-width: 600px;
-            padding: 1rem;
-            border-radius: 1.5rem;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
-            margin-bottom: 30px;
-        }
-        .audio-card {
-            background: #334155;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            border-left: 5px solid #3498db;
-        }
-        canvas {
-            background: #0f172a;
-            width: 100%;
-            height: 60px;
-            border-radius: 0.5rem;
-            margin: 10px 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            position: relative;
-        }
-        .controls {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .controls2 {
-            display: flex;
-            gap: 10px;
-        }
-        button {
-            width: 100%;
-            padding: 20px 10px;
-            border: none;
-            border-radius: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-preview { background: #3498db; color: white; }
-        .btn-preview:hover { background: #4498db; }
-        .btn-proses { background: var(--primary); color: white; }
-        .btn-proses:hover { opacity: 0.9; }
-        button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #222; }
+        canvas { display: block; background: #3a5a3a; } /* Warna rumput */
         
-        input[type="file"] {
-            width: 80%;
-            color: white;
-            outline: none;
-            border: 2px dashed #475569;
-            border-radius: 1rem;
-            padding: 10px;
-            text-align: center;
+        /* Overlay Pesan Orientasi */
+        #orientation-msg {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); color: white; text-align: center;
+            padding-top: 20%; font-family: sans-serif; z-index: 100;
         }
-        @media screen and (min-width: 769px) {
-            body {width: 100%; align-items: center}
-            .app-container { padding: 1.2rem; }
-        }
-        
+        @media (orientation: portrait) { #orientation-msg { display: block; } }
     </style>
 </head>
 <body>
-<div class="app-container">
-    <p>*) File tidak dikirim ke server. Semua proses terjadi di browser Anda.</p>
-    <canvas id="visualizer"></canvas>
-    <button id="btnAdd" style="margin-bottom: 20px">🎛 Tambah Audio</button>
-    
-    <div id="audioInputs">
-        <div class="audio-card">
-            <label>Audio 1:</label>
-            <input type="file" id="file1" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
-        </div>
-        <div class="audio-card" style="border-left-color: #e74c3c;">
-            <label>Audio 2:</label>
-            <input type="file" id="file2" class="audio-file" accept="audio/*,.mp3,.wav,.webm">
-        </div>
-    </div>
 
-    <div class="controls">
-        <button class="btn-preview" onclick="togglePreview()" id="playBtn">▶️ Putar Preview</button>
-        <div class="controls2">
-            <button class="btn-proses" id="btnWebM" style="flex:1;">Proses ke (WebM)</button>
-            <button class="btn-proses" id="btnMP3" style="flex:1; background: #8b5cf6;">Proses ke (MP3)</button>
-        </div>
-        <button id="btnDownload" disabled>💾 Download Hasil</button>
-    </div>
-    <p id="status" style="text-align: center; color: #aaa; margin-top: 10px;"></p>
-</div>
+<div id="orientation-msg">Mohon putar HP Anda ke mode Landscape (Miring)</div>
+<canvas id="gameCanvas"></canvas>
 
 <script>
-    window.addEventListener('DOMContentLoaded', () => {
-        if (typeof lamejs === 'undefined') {
-            alert("⚠️ File 'lame.min.js' tidak ditemukan!\n\nProses ke MP3 tidak akan berfungsi.");
-            // Nonaktifkan tombol MP3 agar tidak error
-            document.getElementById('btnMP3').disabled = true;
-            document.getElementById('btnMP3').style.opacity = "0.5";
-        }
-    });
-    
-    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let currentSource = null;
-    let isPlaying = false;
-    let resultBlob = null;
-    const canvas = document.getElementById('visualizer');
+    const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    document.getElementById('btnAdd').onclick = function() {
-        const container = document.getElementById('audioInputs');
-        const count = container.getElementsByClassName('audio-card').length;
-        if (count < 5) {
-            const div = document.createElement('div');
-            div.className = 'audio-card';
-            div.style.borderLeftColor = ['#f1c40f', '#9b59b6', '#1abc9c'][count-2];
-            div.innerHTML = `<label>Audio ${count + 1}:</label> <input type="file" class="audio-file" accept="audio/*,.mp3,.wav,.webm">`;
-            container.appendChild(div);
-        } else {
-            alert("Maksimal 5 audio");
-        }
-    };
-    
-    async function mergeAudio() {
-        const inputs = document.querySelectorAll('.audio-file');
-        let buffers = [];
-        for (let input of inputs) {
-            if (input.files[0]) {
-                const arrayBuf = await input.files[0].arrayBuffer();
-                const decoded = await audioCtx.decodeAudioData(arrayBuf);
-                buffers.push(decoded);
-            }
-        }
-        if (buffers.length === 0) return null;
-
-        let totalLen = buffers.reduce((acc, b) => acc + b.length, 0);
-        let out = audioCtx.createBuffer(buffers[0].numberOfChannels, totalLen, buffers[0].sampleRate);
-        
-        for (let i = 0; i < out.numberOfChannels; i++) {
-            let offset = 0;
-            for (let b of buffers) {
-                out.getChannelData(i).set(b.getChannelData(i), offset);
-                offset += b.length;
-            }
-        }
-        return out;
+    // Pengaturan Ukuran (Landscape)
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
     }
-    
-    function startVisualizer(source) {
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        function draw() {
-            if (!isPlaying) return ctx.clearRect(0, 0, canvas.width, canvas.height);
-            requestAnimationFrame(draw);
-            analyser.getByteFrequencyData(dataArray);
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            let x = 0;
-            for(let i = 0; i < dataArray.length; i++) {
-                let barHeight = dataArray[i]/2;
-                ctx.fillStyle = `rgb(79, 70, 229)`;
-                ctx.fillRect(x, canvas.height - barHeight, (canvas.width/dataArray.length)*2.5, barHeight);
-                x += (canvas.width/dataArray.length)*2.5 + 1;
-            }
-        }
-        draw();
-    }
-    
-    // 4. Preview Button
-    async function togglePreview() {
-        if (isPlaying) {
-            currentSource.stop();
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
-            document.getElementById('status').innerText = "Berhenti Memutar Preview";
-            return;
-        }
-        const merged = await mergeAudio();
-        if (!merged) return alert("Pilih file audio dulu!");
+    window.addEventListener('resize', resize);
+    resize();
 
-        currentSource = audioCtx.createBufferSource();
-        currentSource.buffer = merged;
-        isPlaying = true;
-        document.getElementById('playBtn').innerText = "⏹️ Berhenti";
-        document.getElementById('status').innerText = "Memutar Preview...";
-        startVisualizer(currentSource);
-        currentSource.start();
-        currentSource.onended = () => {
-            isPlaying = false;
-            document.getElementById('playBtn').innerText = "▶️ Putar Preview";
-            document.getElementById('status').innerText = "Berhenti Memutar Preview";
-        };
-    }
-    
-    document.getElementById('btnWebM').onclick = async () => {
-        const merged = await mergeAudio();
-        if (!merged) return alert("Pilih file audio dulu!");
-        const dest = audioCtx.createMediaStreamDestination();
-        const source = audioCtx.createBufferSource();
-        source.buffer = merged;
-        source.connect(dest);
-        const recorder = new MediaRecorder(dest.stream);
-        const chunks = [];
-        recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = () => {
-            resultBlob = new Blob(chunks, {type: 'audio/webm'});
-            enableDownload("SamAu-nteste05.webm");
-        };
-        recorder.start();
-        source.start();
-        source.onended = () => recorder.stop();
-        document.getElementById('status').innerText = "Memproses WebM...";
-    };
-    
-    document.getElementById('btnMP3').onclick = async () => {
-        const merged = await mergeAudio();
-        if (!merged) return alert("Pilih file audio dulu!");
-        document.getElementById('status').innerText = "Memproses MP3...";
-        
-        const mp3encoder = new lamejs.Mp3Encoder(1, merged.sampleRate, 128);
-        const samples = merged.getChannelData(0);
-        const int16 = new Int16Array(samples.length);
-        for(let i=0; i<samples.length; i++) {
-            int16[i] = samples[i] < 0 ? samples[i] * 0x8000 : samples[i] * 0x7FFF;
-        }
-
-        const mp3Data = [];
-        for (let i = 0; i < int16.length; i += 1152) {
-            let chunk = int16.subarray(i, i + 1152);
-            let mp3buf = mp3encoder.encodeBuffer(chunk);
-            if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf));
-        }
-        mp3Data.push(new Uint8Array(mp3encoder.flush()));
-        resultBlob = new Blob(mp3Data, {type: 'audio/mp3'});
-        enableDownload("SamAu-nteste05.mp3");
+    // Data Pemain
+    const player = {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        size: 20,
+        color: '#3498db',
+        speed: 4,
+        dx: 0,
+        dy: 0,
+        health: 100
     };
 
-    function enableDownload(name) {
-        document.getElementById('status').innerText = "Proses Selesai!";
-        const btn = document.getElementById('btnDownload');
-        btn.disabled = false;
-        btn.onclick = () => {
-            const url = URL.createObjectURL(resultBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.click();
-        };
+    // Joystick Virtual
+    const joystick = {
+        active: false,
+        originX: 100,
+        originY: 0, // Akan diatur di bawah
+        currX: 100,
+        currY: 0,
+        radius: 60,
+        knobRadius: 25
+    };
+
+    // Tombol Skill/Serang
+    const attackBtn = { x: 0, y: 0, radius: 40, active: false };
+
+    // Inisialisasi Posisi Kontrol
+    function initControls() {
+        joystick.originY = canvas.height - 100;
+        joystick.currY = joystick.originY;
+        attackBtn.x = canvas.width - 80;
+        attackBtn.y = canvas.height - 80;
     }
+    initControls();
+
+    // Input Touch
+    canvas.addEventListener('touchstart', (e) => {
+        for (let t of e.touches) {
+            // Cek sisi kiri untuk Joystick
+            if (t.clientX < canvas.width / 2) {
+                joystick.active = true;
+                joystick.currX = t.clientX;
+                joystick.currY = t.clientY;
+            }
+            // Cek sisi kanan untuk Tombol Serang
+            let dist = Math.hypot(t.clientX - attackBtn.x, t.clientY - attackBtn.y);
+            if (dist < attackBtn.radius) {
+                attackBtn.active = true;
+                player.color = '#e74c3c'; // Berubah warna saat "menyerang"
+                setTimeout(() => player.color = '#3498db', 200);
+            }
+        }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (!joystick.active) return;
+        e.preventDefault();
+        for (let t of e.touches) {
+            if (t.clientX < canvas.width / 2) {
+                let dx = t.clientX - joystick.originX;
+                let dy = t.clientY - joystick.originY;
+                let dist = Math.hypot(dx, dy);
+                
+                // Batasi knob agar tetap di dalam lingkaran joystick
+                if (dist > joystick.radius) {
+                    let angle = Math.atan2(dy, dx);
+                    joystick.currX = joystick.originX + Math.cos(angle) * joystick.radius;
+                    joystick.currY = joystick.originY + Math.sin(angle) * joystick.radius;
+                } else {
+                    joystick.currX = t.clientX;
+                    joystick.currY = t.clientY;
+                }
+
+                // Hitung arah gerak pemain
+                player.dx = (joystick.currX - joystick.originX) / joystick.radius;
+                player.dy = (joystick.currY - joystick.originY) / joystick.radius;
+            }
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+        joystick.active = false;
+        joystick.currX = joystick.originX;
+        joystick.currY = joystick.originY;
+        player.dx = 0;
+        player.dy = 0;
+        attackBtn.active = false;
+    });
+
+    // Loop Game
+    function update() {
+        player.x += player.dx * player.speed;
+        player.y += player.dy * player.speed;
+
+        // Batasi layar
+        player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+        player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Gambar Pemain
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+        ctx.fillStyle = player.color;
+        ctx.fill();
+        ctx.closePath();
+
+        // Gambar UI Joystick
+        ctx.beginPath();
+        ctx.arc(joystick.originX, joystick.originY, joystick.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(joystick.currX, joystick.currY, joystick.knobRadius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fill();
+
+        // Gambar Tombol Serang
+        ctx.beginPath();
+        ctx.arc(attackBtn.x, attackBtn.y, attackBtn.radius, 0, Math.PI * 2);
+        ctx.fillStyle = attackBtn.active ? '#c0392b' : 'rgba(231, 76, 60, 0.6)';
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('HIT', attackBtn.x, attackBtn.y + 7);
+
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
+    }
+
+    draw();
 </script>
+
 </body>
 </html>
