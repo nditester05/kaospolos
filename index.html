@@ -3,176 +3,230 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>Mini Mobile Legend Style</title>
+    <title>Retro Tank 1990 - Enemy AI Edition</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #222; }
-        canvas { display: block; background: #3a5a3a; } /* Warna rumput */
-        
-        /* Overlay Pesan Orientasi */
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        canvas { display: block; background: #000; margin: auto; }
         #orientation-msg {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); color: white; text-align: center;
-            padding-top: 20%; font-family: sans-serif; z-index: 100;
+            background: #000; color: yellow; text-align: center; padding-top: 20%; z-index: 100;
         }
         @media (orientation: portrait) { #orientation-msg { display: block; } }
     </style>
 </head>
 <body>
 
-<div id="orientation-msg">Mohon putar HP Anda ke mode Landscape (Miring)</div>
+<div id="orientation-msg"><h1>PUTAR HP KE LANDSCAPE</h1></div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Pengaturan Ukuran (Landscape)
+    // --- KONFIGURASI GAME ---
+    const TILE_SIZE = 40;
+    let W, H;
+    const bullets = [];
+    const enemies = [];
+    const MAX_ENEMIES = 4;
+
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        W = canvas.width;
+        H = canvas.height;
+        initUI();
     }
     window.addEventListener('resize', resize);
-    resize();
 
-    // Data Pemain
-    const player = {
-        x: canvas.width / 2,
-        y: canvas.height / 2,
-        size: 20,
-        color: '#3498db',
-        speed: 4,
-        dx: 0,
-        dy: 0,
-        health: 100
-    };
+    // --- MAP (1 = Bata, 0 = Kosong) ---
+    const worldMap = [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+        [1,0,1,0,1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,0,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
 
-    // Joystick Virtual
-    const joystick = {
-        active: false,
-        originX: 100,
-        originY: 0, // Akan diatur di bawah
-        currX: 100,
-        currY: 0,
-        radius: 60,
-        knobRadius: 25
-    };
+    // --- ENTITY CLASSES ---
+    class Tank {
+        constructor(x, y, color, isPlayer = false) {
+            this.x = x; this.y = y;
+            this.size = 34;
+            this.color = color;
+            this.dir = 'up';
+            this.speed = isPlayer ? 3 : 2;
+            this.isPlayer = isPlayer;
+            this.lastShot = 0;
+            this.moveTimer = 0; // Untuk AI
+        }
 
-    // Tombol Skill/Serang
-    const attackBtn = { x: 0, y: 0, radius: 40, active: false };
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+            // Moncong
+            ctx.fillStyle = "#fff";
+            if(this.dir==='up') ctx.fillRect(this.x+14, this.y-8, 6, 12);
+            if(this.dir==='down') ctx.fillRect(this.x+14, this.y+this.size-4, 6, 12);
+            if(this.dir==='left') ctx.fillRect(this.x-8, this.y+14, 12, 6);
+            if(this.dir==='right') ctx.fillRect(this.x+this.size-4, this.y+14, 12, 6);
+        }
 
-    // Inisialisasi Posisi Kontrol
-    function initControls() {
-        joystick.originY = canvas.height - 100;
-        joystick.currY = joystick.originY;
-        attackBtn.x = canvas.width - 80;
-        attackBtn.y = canvas.height - 80;
+        move(direction) {
+            this.dir = direction;
+            let nx = this.x, ny = this.y;
+            if(direction==='up') ny -= this.speed;
+            if(direction==='down') ny += this.speed;
+            if(direction==='left') nx -= this.speed;
+            if(direction==='right') nx += this.speed;
+
+            if(!this.checkCollision(nx, ny)) {
+                this.x = nx; this.y = ny;
+                return true;
+            }
+            return false;
+        }
+
+        checkCollision(nx, ny) {
+            let col = Math.floor((nx + this.size/2) / TILE_SIZE);
+            let row = Math.floor((ny + this.size/2) / TILE_SIZE);
+            if(worldMap[row] && worldMap[row][col] === 1) return true;
+            if(nx < 0 || nx > W - this.size || ny < 0 || ny > H - this.size) return true;
+            return false;
+        }
+
+        shoot() {
+            let now = Date.now();
+            if(now - this.lastShot > 500) {
+                bullets.push({
+                    x: this.x + this.size/2,
+                    y: this.y + this.size/2,
+                    dir: this.dir,
+                    speed: 6,
+                    owner: this.isPlayer ? 'player' : 'enemy'
+                });
+                this.lastShot = now;
+            }
+        }
     }
-    initControls();
 
-    // Input Touch
-    canvas.addEventListener('touchstart', (e) => {
-        for (let t of e.touches) {
-            // Cek sisi kiri untuk Joystick
-            if (t.clientX < canvas.width / 2) {
-                joystick.active = true;
-                joystick.currX = t.clientX;
-                joystick.currY = t.clientY;
-            }
-            // Cek sisi kanan untuk Tombol Serang
-            let dist = Math.hypot(t.clientX - attackBtn.x, t.clientY - attackBtn.y);
-            if (dist < attackBtn.radius) {
-                attackBtn.active = true;
-                player.color = '#e74c3c'; // Berubah warna saat "menyerang"
-                setTimeout(() => player.color = '#3498db', 200);
-            }
+    const player = new Tank(TILE_SIZE*1.5, TILE_SIZE*1.5, '#f1c40f', true);
+
+    function spawnEnemy() {
+        if(enemies.length < MAX_ENEMIES) {
+            enemies.push(new Tank(W - TILE_SIZE*2, TILE_SIZE*1.5, '#e74c3c'));
+        }
+    }
+
+    // --- UI & CONTROLS ---
+    const joystick = { ox: 100, oy: 0, cx: 100, cy: 0, r: 60, active: false };
+    const shootBtn = { x: 0, y: 0, r: 40 };
+
+    function initUI() {
+        joystick.oy = H - 100; joystick.cy = joystick.oy;
+        shootBtn.x = W - 100; shootBtn.y = H - 100;
+    }
+
+    canvas.addEventListener('touchstart', e => {
+        for(let t of e.touches) {
+            let d = Math.hypot(t.clientX - shootBtn.x, t.clientY - shootBtn.y);
+            if(d < shootBtn.r) player.shoot();
+            else if(t.clientX < W/2) { joystick.active = true; handleJoy(t.clientX, t.clientY); }
         }
     });
 
-    canvas.addEventListener('touchmove', (e) => {
-        if (!joystick.active) return;
-        e.preventDefault();
-        for (let t of e.touches) {
-            if (t.clientX < canvas.width / 2) {
-                let dx = t.clientX - joystick.originX;
-                let dy = t.clientY - joystick.originY;
-                let dist = Math.hypot(dx, dy);
-                
-                // Batasi knob agar tetap di dalam lingkaran joystick
-                if (dist > joystick.radius) {
-                    let angle = Math.atan2(dy, dx);
-                    joystick.currX = joystick.originX + Math.cos(angle) * joystick.radius;
-                    joystick.currY = joystick.originY + Math.sin(angle) * joystick.radius;
-                } else {
-                    joystick.currX = t.clientX;
-                    joystick.currY = t.clientY;
-                }
-
-                // Hitung arah gerak pemain
-                player.dx = (joystick.currX - joystick.originX) / joystick.radius;
-                player.dy = (joystick.currY - joystick.originY) / joystick.radius;
-            }
-        }
-    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+        if(!joystick.active) return;
+        for(let t of e.touches) if(t.clientX < W/2) handleJoy(t.clientX, t.clientY);
+    });
 
     canvas.addEventListener('touchend', () => {
-        joystick.active = false;
-        joystick.currX = joystick.originX;
-        joystick.currY = joystick.originY;
-        player.dx = 0;
-        player.dy = 0;
-        attackBtn.active = false;
+        joystick.active = false; joystick.cx = joystick.ox; joystick.cy = joystick.oy;
     });
 
-    // Loop Game
-    function update() {
-        player.x += player.dx * player.speed;
-        player.y += player.dy * player.speed;
+    function handleJoy(tx, ty) {
+        let dx = tx - joystick.ox, dy = ty - joystick.oy;
+        let angle = Math.atan2(dy, dx);
+        let dist = Math.min(Math.hypot(dx, dy), joystick.r);
+        joystick.cx = joystick.ox + Math.cos(angle) * dist;
+        joystick.cy = joystick.oy + Math.sin(angle) * dist;
+        
+        if(Math.abs(dx) > Math.abs(dy)) player.move(dx > 0 ? 'right' : 'left');
+        else player.move(dy > 0 ? 'down' : 'up');
+    }
 
-        // Batasi layar
-        player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
-        player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+    // --- GAME ENGINE ---
+    function update() {
+        // Update Musuh AI
+        enemies.forEach((en, idx) => {
+            if(!en.move(en.dir) || Math.random() < 0.02) {
+                const dirs = ['up', 'down', 'left', 'right'];
+                en.dir = dirs[Math.floor(Math.random()*4)];
+            }
+            if(Math.random() < 0.01) en.shoot();
+        });
+
+        // Update Peluru
+        bullets.forEach((b, i) => {
+            if(b.dir==='up') b.y -= b.speed;
+            if(b.dir==='down') b.y += b.speed;
+            if(b.dir==='left') b.x -= b.speed;
+            if(b.dir==='right') b.x += b.speed;
+
+            let bc = Math.floor(b.x / TILE_SIZE), br = Math.floor(b.y / TILE_SIZE);
+            
+            // Tabrak Tembok
+            if(worldMap[br] && worldMap[br][bc] === 1) {
+                worldMap[br][bc] = 0; bullets.splice(i, 1);
+            }
+            // Tabrak Musuh
+            else if(b.owner === 'player') {
+                enemies.forEach((en, ei) => {
+                    if(b.x > en.x && b.x < en.x+en.size && b.y > en.y && b.y < en.y+en.size) {
+                        enemies.splice(ei, 1); bullets.splice(i, 1);
+                    }
+                });
+            }
+            // Hapus jika keluar layar
+            if(b.x<0 || b.x>W || b.y<0 || b.y>H) bullets.splice(i, 1);
+        });
+
+        if(Math.random() < 0.005) spawnEnemy();
     }
 
     function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, W, H);
+        
+        // Draw Map
+        worldMap.forEach((row, r) => row.forEach((cell, c) => {
+            if(cell === 1) {
+                ctx.fillStyle = '#964B00';
+                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE-2, TILE_SIZE-2);
+            }
+        }));
 
-        // Gambar Pemain
-        ctx.beginPath();
-        ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
-        ctx.fillStyle = player.color;
-        ctx.fill();
-        ctx.closePath();
+        player.draw();
+        enemies.forEach(en => en.draw());
+        ctx.fillStyle = "white";
+        bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 5, 5));
 
-        // Gambar UI Joystick
-        ctx.beginPath();
-        ctx.arc(joystick.originX, joystick.originY, joystick.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 4;
-        ctx.stroke();
+        // UI
+        ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(joystick.ox, joystick.oy, joystick.r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.3)";
+        ctx.beginPath(); ctx.arc(joystick.cx, joystick.cy, 25, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "rgba(255,0,0,0.5)";
+        ctx.beginPath(); ctx.arc(shootBtn.x, shootBtn.y, shootBtn.r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.fillText("FIRE", shootBtn.x-15, shootBtn.y+5);
 
-        ctx.beginPath();
-        ctx.arc(joystick.currX, joystick.currY, joystick.knobRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fill();
-
-        // Gambar Tombol Serang
-        ctx.beginPath();
-        ctx.arc(attackBtn.x, attackBtn.y, attackBtn.radius, 0, Math.PI * 2);
-        ctx.fillStyle = attackBtn.active ? '#c0392b' : 'rgba(231, 76, 60, 0.6)';
-        ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('HIT', attackBtn.x, attackBtn.y + 7);
-
-        requestAnimationFrame(() => {
-            update();
-            draw();
-        });
+        update();
+        requestAnimationFrame(draw);
     }
 
+    resize();
     draw();
 </script>
-
 </body>
 </html>
