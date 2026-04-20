@@ -2,85 +2,101 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>Retro Tank 1990 - Enemy AI Edition</title>
+    <!-- Meta tag ini sangat penting untuk mematikan fitur zoom otomatis browser -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Retro Tank 1990 - Mobile Optimized</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
-        canvas { display: block; background: #000; margin: auto; }
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; background: #000; 
+            font-family: 'Courier New', monospace;
+            /* Mematikan semua interaksi default browser seperti zoom dan long-press */
+            touch-action: none; 
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas { 
+            display: block; 
+            background: #000; 
+            touch-action: none; 
+        }
         #orientation-msg {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; color: yellow; text-align: center; padding-top: 20%; z-index: 100;
+            background: #000; color: yellow; text-align: center; 
+            display: flex; align-items: center; justify-content: center; z-index: 100;
         }
-        @media (orientation: portrait) { #orientation-msg { display: block; } }
+        /* Hanya muncul jika layar portrait (tegak) */
+        @media (orientation: portrait) { #orientation-msg { display: flex; } }
+        @media (orientation: landscape) { #orientation-msg { display: none; } }
     </style>
 </head>
 <body>
 
-<div id="orientation-msg"><h1>PUTAR HP KE LANDSCAPE</h1></div>
+<div id="orientation-msg"><h1>PUTAR HP KE LANDSCAPE (MIRING)</h1></div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // --- KONFIGURASI GAME ---
-    const TILE_SIZE = 40;
-    let W, H;
+    let W, H, TILE_SIZE;
     const bullets = [];
     const enemies = [];
-    const MAX_ENEMIES = 4;
+    const MAX_ENEMIES = 5;
+
+    // --- MAP (1 = Bata, 0 = Jalan) ---
+    const worldMap = [
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,0],
+        [0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,1,1,0,1,1,0,0,0,0,0,0,0,1,1,0,1,1,0,0],
+        [0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0],
+        [0,1,1,0,1,1,0,1,1,1,1,0,1,1,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    ];
 
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         W = canvas.width;
         H = canvas.height;
+        TILE_SIZE = Math.floor(W / 20); // Skala dinamis berdasarkan lebar layar
         initUI();
     }
     window.addEventListener('resize', resize);
 
-    // --- MAP (1 = Bata, 0 = Kosong) ---
-    const worldMap = [
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
-        [1,0,1,0,1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1],
-        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-        [1,0,1,1,0,1,0,0,1,1,1,0,0,1,0,1,1,0,0,1],
-        [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-    ];
-
-    // --- ENTITY CLASSES ---
+    // --- KELAS TANK ---
     class Tank {
         constructor(x, y, color, isPlayer = false) {
             this.x = x; this.y = y;
-            this.size = 34;
+            this.size = 32;
             this.color = color;
             this.dir = 'up';
             this.speed = isPlayer ? 3 : 2;
             this.isPlayer = isPlayer;
             this.lastShot = 0;
-            this.moveTimer = 0; // Untuk AI
         }
 
         draw() {
             ctx.fillStyle = this.color;
             ctx.fillRect(this.x, this.y, this.size, this.size);
-            // Moncong
+            // Moncong Tank
             ctx.fillStyle = "#fff";
-            if(this.dir==='up') ctx.fillRect(this.x+14, this.y-8, 6, 12);
-            if(this.dir==='down') ctx.fillRect(this.x+14, this.y+this.size-4, 6, 12);
-            if(this.dir==='left') ctx.fillRect(this.x-8, this.y+14, 12, 6);
-            if(this.dir==='right') ctx.fillRect(this.x+this.size-4, this.y+14, 12, 6);
+            const barrelSize = 10;
+            if(this.dir==='up') ctx.fillRect(this.x + (this.size/2 - 3), this.y - 8, 6, 12);
+            if(this.dir==='down') ctx.fillRect(this.x + (this.size/2 - 3), this.y + this.size - 4, 6, 12);
+            if(this.dir==='left') ctx.fillRect(this.x - 8, this.y + (this.size/2 - 3), 12, 6);
+            if(this.dir==='right') ctx.fillRect(this.x + this.size - 4, this.y + (this.size/2 - 3), 12, 6);
         }
 
-        move(direction) {
-            this.dir = direction;
-            let nx = this.x, ny = this.y;
-            if(direction==='up') ny -= this.speed;
-            if(direction==='down') ny += this.speed;
-            if(direction==='left') nx -= this.speed;
-            if(direction==='right') nx += this.speed;
+        move(newDir) {
+            this.dir = newDir;
+            let nx = this.x;
+            let ny = this.y;
+            if(newDir==='up') ny -= this.speed;
+            if(newDir==='down') ny += this.speed;
+            if(newDir==='left') nx -= this.speed;
+            if(newDir==='right') nx += this.speed;
 
             if(!this.checkCollision(nx, ny)) {
                 this.x = nx; this.y = ny;
@@ -90,21 +106,30 @@
         }
 
         checkCollision(nx, ny) {
-            let col = Math.floor((nx + this.size/2) / TILE_SIZE);
-            let row = Math.floor((ny + this.size/2) / TILE_SIZE);
-            if(worldMap[row] && worldMap[row][col] === 1) return true;
+            // Cek Batas Layar
             if(nx < 0 || nx > W - this.size || ny < 0 || ny > H - this.size) return true;
+            
+            // Cek Tembok Bata
+            let corners = [
+                {x: nx, y: ny}, {x: nx+this.size, y: ny},
+                {x: nx, y: ny+this.size}, {x: nx+this.size, y: ny+this.size}
+            ];
+            for(let p of corners) {
+                let col = Math.floor(p.x / TILE_SIZE);
+                let row = Math.floor(p.y / TILE_SIZE);
+                if(worldMap[row] && worldMap[row][col] === 1) return true;
+            }
             return false;
         }
 
         shoot() {
             let now = Date.now();
-            if(now - this.lastShot > 500) {
+            if(now - this.lastShot > 400) {
                 bullets.push({
                     x: this.x + this.size/2,
                     y: this.y + this.size/2,
                     dir: this.dir,
-                    speed: 6,
+                    speed: 7,
                     owner: this.isPlayer ? 'player' : 'enemy'
                 });
                 this.lastShot = now;
@@ -112,76 +137,83 @@
         }
     }
 
-    const player = new Tank(TILE_SIZE*1.5, TILE_SIZE*1.5, '#f1c40f', true);
+    const player = new Tank(100, 100, '#f1c40f', true);
 
     function spawnEnemy() {
         if(enemies.length < MAX_ENEMIES) {
-            enemies.push(new Tank(W - TILE_SIZE*2, TILE_SIZE*1.5, '#e74c3c'));
+            enemies.push(new Tank(W - 100, H - 100, '#e74c3c'));
         }
     }
 
-    // --- UI & CONTROLS ---
-    const joystick = { ox: 100, oy: 0, cx: 100, cy: 0, r: 60, active: false };
-    const shootBtn = { x: 0, y: 0, r: 40 };
+    // --- KONTROL UI ---
+    const joy = { ox: 120, oy: 0, cx: 120, cy: 0, r: 60, active: false };
+    const btn = { x: 0, y: 0, r: 45 };
 
     function initUI() {
-        joystick.oy = H - 100; joystick.cy = joystick.oy;
-        shootBtn.x = W - 100; shootBtn.y = H - 100;
+        joy.oy = H - 120; joy.cy = joy.oy;
+        btn.x = W - 120; btn.y = H - 120;
     }
 
+    // Handle Sentuhan (Mencegah Zoom & Delay)
     canvas.addEventListener('touchstart', e => {
+        e.preventDefault(); 
         for(let t of e.touches) {
-            let d = Math.hypot(t.clientX - shootBtn.x, t.clientY - shootBtn.y);
-            if(d < shootBtn.r) player.shoot();
-            else if(t.clientX < W/2) { joystick.active = true; handleJoy(t.clientX, t.clientY); }
+            let distBtn = Math.hypot(t.clientX - btn.x, t.clientY - btn.y);
+            if(distBtn < btn.r) player.shoot();
+            else if(t.clientX < W/2) { joy.active = true; updateJoy(t.clientX, t.clientY); }
         }
-    });
+    }, {passive: false});
 
     canvas.addEventListener('touchmove', e => {
-        if(!joystick.active) return;
-        for(let t of e.touches) if(t.clientX < W/2) handleJoy(t.clientX, t.clientY);
-    });
+        e.preventDefault();
+        if(!joy.active) return;
+        for(let t of e.touches) if(t.clientX < W/2) updateJoy(t.clientX, t.clientY);
+    }, {passive: false});
 
-    canvas.addEventListener('touchend', () => {
-        joystick.active = false; joystick.cx = joystick.ox; joystick.cy = joystick.oy;
-    });
+    canvas.addEventListener('touchend', e => {
+        e.preventDefault();
+        if(e.touches.length === 0 || [...e.touches].every(t => t.clientX >= W/2)) {
+            joy.active = false; joy.cx = joy.ox; joy.cy = joy.oy;
+        }
+    }, {passive: false});
 
-    function handleJoy(tx, ty) {
-        let dx = tx - joystick.ox, dy = ty - joystick.oy;
+    function updateJoy(tx, ty) {
+        let dx = tx - joy.ox, dy = ty - joy.oy;
         let angle = Math.atan2(dy, dx);
-        let dist = Math.min(Math.hypot(dx, dy), joystick.r);
-        joystick.cx = joystick.ox + Math.cos(angle) * dist;
-        joystick.cy = joystick.oy + Math.sin(angle) * dist;
+        let dist = Math.min(Math.hypot(dx, dy), joy.r);
+        joy.cx = joy.ox + Math.cos(angle) * dist;
+        joy.cy = joy.oy + Math.sin(angle) * dist;
         
         if(Math.abs(dx) > Math.abs(dy)) player.move(dx > 0 ? 'right' : 'left');
         else player.move(dy > 0 ? 'down' : 'up');
     }
 
-    // --- GAME ENGINE ---
+    // --- LOOP UTAMA ---
     function update() {
-        // Update Musuh AI
-        enemies.forEach((en, idx) => {
+        // AI Musuh
+        enemies.forEach((en, i) => {
             if(!en.move(en.dir) || Math.random() < 0.02) {
-                const dirs = ['up', 'down', 'left', 'right'];
-                en.dir = dirs[Math.floor(Math.random()*4)];
+                const ds = ['up','down','left','right'];
+                en.dir = ds[Math.floor(Math.random()*4)];
             }
             if(Math.random() < 0.01) en.shoot();
         });
 
-        // Update Peluru
+        // Peluru
         bullets.forEach((b, i) => {
             if(b.dir==='up') b.y -= b.speed;
             if(b.dir==='down') b.y += b.speed;
             if(b.dir==='left') b.x -= b.speed;
             if(b.dir==='right') b.x += b.speed;
 
-            let bc = Math.floor(b.x / TILE_SIZE), br = Math.floor(b.y / TILE_SIZE);
-            
-            // Tabrak Tembok
-            if(worldMap[br] && worldMap[br][bc] === 1) {
-                worldMap[br][bc] = 0; bullets.splice(i, 1);
-            }
-            // Tabrak Musuh
+            let col = Math.floor(b.x / TILE_SIZE);
+            let row = Math.floor(b.y / TILE_SIZE);
+
+            // Tabrak Bata
+            if(worldMap[row] && worldMap[row][col] === 1) {
+                worldMap[row][col] = 0; bullets.splice(i, 1);
+            } 
+            // Player tembak Musuh
             else if(b.owner === 'player') {
                 enemies.forEach((en, ei) => {
                     if(b.x > en.x && b.x < en.x+en.size && b.y > en.y && b.y < en.y+en.size) {
@@ -189,37 +221,47 @@
                     }
                 });
             }
-            // Hapus jika keluar layar
+            // Musuh tembak Player
+            else if(b.owner === 'enemy') {
+                if(b.x > player.x && b.x < player.x+player.size && b.y > player.y && b.y < player.y+player.size) {
+                    alert("GAME OVER! Tank hancur."); location.reload();
+                }
+            }
+
             if(b.x<0 || b.x>W || b.y<0 || b.y>H) bullets.splice(i, 1);
         });
 
-        if(Math.random() < 0.005) spawnEnemy();
+        if(Math.random() < 0.01) spawnEnemy();
     }
 
     function draw() {
         ctx.clearRect(0, 0, W, H);
         
-        // Draw Map
+        // Draw Bata
         worldMap.forEach((row, r) => row.forEach((cell, c) => {
             if(cell === 1) {
-                ctx.fillStyle = '#964B00';
-                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE-2, TILE_SIZE-2);
+                ctx.fillStyle = '#a52a2a';
+                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1);
+                ctx.strokeStyle = '#551111'; ctx.strokeRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1);
             }
         }));
 
         player.draw();
         enemies.forEach(en => en.draw());
-        ctx.fillStyle = "white";
-        bullets.forEach(b => ctx.fillRect(b.x-2, b.y-2, 5, 5));
+        ctx.fillStyle = "yellow";
+        bullets.forEach(b => ctx.beginPath() || ctx.arc(b.x, b.y, 3, 0, 7) || ctx.fill());
 
-        // UI
-        ctx.strokeStyle = "white"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(joystick.ox, joystick.oy, joystick.r, 0, Math.PI*2); ctx.stroke();
-        ctx.fillStyle = "rgba(255,255,255,0.3)";
-        ctx.beginPath(); ctx.arc(joystick.cx, joystick.cy, 25, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "rgba(255,0,0,0.5)";
-        ctx.beginPath(); ctx.arc(shootBtn.x, shootBtn.y, shootBtn.r, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "white"; ctx.fillText("FIRE", shootBtn.x-15, shootBtn.y+5);
+        // Kontrol Analog
+        ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(joy.ox, joy.oy, joy.r, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.beginPath(); ctx.arc(joy.cx, joy.cy, 25, 0, Math.PI*2); ctx.fill();
+
+        // Tombol Tembak
+        ctx.fillStyle = "rgba(255,0,0,0.6)";
+        ctx.beginPath(); ctx.arc(btn.x, btn.y, btn.r, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.textAlign = "center";
+        ctx.font = "bold 16px Arial"; ctx.fillText("FIRE", btn.x, btn.y+5);
 
         update();
         requestAnimationFrame(draw);
