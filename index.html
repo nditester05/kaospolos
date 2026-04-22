@@ -3,68 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Signer App - Single File</title>
+    <title>PDF Reader & Signer - GitHub Pages</title>
     
-    <!-- Library Dependencies -->
-    
+    <!-- Memanggil file lokal dari repo GitHub kamu -->
     <script src="pdf.min.js"></script>
+    
+    <!-- Library pendukung tetap menggunakan CDN agar file html tetap ringan -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://jsdelivr.net"></script>
 
     <style>
-        :root { --primary: #2563eb; --danger: #dc2626; --bg: #f8fafc; }
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; padding: 10px; background: var(--bg);
-            display: flex; flex-direction: column; align-items: center;
-        }
-        .toolbar {
-            background: white; padding: 15px; border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        :root { --primary: #2563eb; --success: #059669; --danger: #dc2626; }
+        body { font-family: sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        
+        .toolbar { 
+            background: white; padding: 15px; border-radius: 10px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
             margin-bottom: 20px; width: 100%; max-width: 800px;
             display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
         }
-        #pdf-wrapper { 
+
+        #pdf-container { 
             position: relative; border: 1px solid #cbd5e1; 
             background: white; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-            overflow: hidden; touch-action: none;
+            touch-action: none; /* Penting untuk mobile agar tidak scrolling saat ttd */
         }
-        canvas { max-width: 100%; height: auto !important; }
+
+        canvas { display: block; max-width: 100%; height: auto !important; }
         #signature-layer { position: absolute; top: 0; left: 0; z-index: 10; cursor: crosshair; }
-        
-        button, input[type="file"]::file-selector-button {
-            padding: 8px 16px; border-radius: 6px; border: none;
-            background: var(--primary); color: white; cursor: pointer; font-weight: 500;
+
+        button { 
+            padding: 8px 16px; border: none; border-radius: 6px; 
+            background: var(--primary); color: white; cursor: pointer; font-weight: bold;
         }
-        .btn-danger { background: var(--danger); }
-        .page-info { align-self: center; font-size: 14px; font-weight: bold; }
-        
-        /* Mobile adjustment */
-        @media (max-width: 600px) {
-            .toolbar { flex-direction: column; }
-            button { width: 100%; }
-        }
+        .btn-clear { background: var(--danger); }
+        .btn-save { background: var(--success); }
+        .status { color: #64748b; font-size: 14px; margin-top: 5px; width: 100%; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
     <input type="file" id="file-input" accept="application/pdf">
-    <button id="prev-page">◀ Prev</button>
-    <span class="page-info"><span id="page-num">0</span> / <span id="page-count">0</span></span>
-    <button id="next-page">Next ▶</button>
-    <button class="btn-danger" id="clear-sig">Hapus Tanda Tangan</button>
-    <button style="background: #059669;" id="save-pdf">Simpan & Download</button>
+    <button id="prev-page">◀</button>
+    <span style="align-self:center">Hal: <span id="page-num">0</span> / <span id="page-count">0</span></span>
+    <button id="next-page">▶</button>
+    <button class="btn-clear" id="clear-sig">Hapus TTD</button>
+    <button class="btn-save" id="save-pdf">Simpan PDF</button>
+    <div id="msg" class="status">Silakan pilih file PDF</div>
 </div>
 
-<div id="pdf-wrapper">
-    <!-- Canvas untuk menampilkan PDF -->
+<div id="pdf-container">
     <canvas id="pdf-render"></canvas>
-    <!-- Canvas transparan di atasnya untuk tanda tangan -->
     <canvas id="signature-layer"></canvas>
 </div>
 
 <script>
-    const { jsPDF } = window.jspdf;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+    // 1. KONFIGURASI WORKER (Penting agar PDF tampil di GitHub Pages)
+    // Mencari file pdf.worker.min.js di folder yang sama
+    if (window['pdfjs-dist/build/pdf']) {
+        var pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+    }
 
     let pdfDoc = null,
         pageNum = 1,
@@ -73,37 +73,39 @@
         ctx = pdfCanvas.getContext('2d'),
         signaturePad = null;
 
-    // Inisialisasi Signature Pad
+    // Inisialisasi area tanda tangan
     function initSignature() {
-        if (signaturePad) signaturePad.off(); 
+        if (signaturePad) signaturePad.off();
         signaturePad = new SignaturePad(sigCanvas, {
             backgroundColor: 'rgba(0,0,0,0)',
             penColor: 'black'
         });
     }
 
-    // Tampilkan Halaman PDF
-    function renderPage(num) {
-        pdfDoc.getPage(num).then(page => {
-            // Sesuaikan resolusi untuk layar jernih (desktop & mobile)
+    // Render halaman PDF ke Canvas
+    async function renderPage(num) {
+        try {
+            const page = await pdfDoc.getPage(num);
             const viewport = page.getViewport({ scale: 1.5 });
+
             pdfCanvas.height = viewport.height;
             pdfCanvas.width = viewport.width;
-            
-            // Samakan ukuran canvas tanda tangan dengan canvas PDF
             sigCanvas.height = viewport.height;
             sigCanvas.width = viewport.width;
 
             const renderContext = { canvasContext: ctx, viewport: viewport };
-            page.render(renderContext).promise.then(() => {
-                initSignature(); // Reset signature pad setiap ganti halaman
-            });
-
+            await page.render(renderContext).promise;
+            
             document.getElementById('page-num').textContent = num;
-        });
+            initSignature();
+            document.getElementById('msg').textContent = "Siap ditandatangani";
+        } catch (err) {
+            console.error(err);
+            document.getElementById('msg').textContent = "Error render: " + err.message;
+        }
     }
 
-    // Handler Pilih File
+    // Event saat pilih file
     document.getElementById('file-input').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file || file.type !== 'application/pdf') return;
@@ -116,48 +118,49 @@
                 pageNum = 1;
                 document.getElementById('page-count').textContent = pdf.numPages;
                 renderPage(pageNum);
+            }).catch(err => {
+                document.getElementById('msg').textContent = "Gagal buka PDF: " + err.message;
             });
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // Navigasi
-    document.getElementById('prev-page').addEventListener('click', () => {
+    // Navigasi Halaman
+    document.getElementById('prev-page').onclick = () => {
         if (pdfDoc && pageNum > 1) { pageNum--; renderPage(pageNum); }
-    });
-    document.getElementById('next-page').addEventListener('click', () => {
+    };
+    document.getElementById('next-page').onclick = () => {
         if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); }
-    });
+    };
 
-    // Hapus Coretan
-    document.getElementById('clear-sig').addEventListener('click', () => {
+    // Hapus Tanda Tangan
+    document.getElementById('clear-sig').onclick = () => {
         if (signaturePad) signaturePad.clear();
-    });
+    };
 
-    // Proses Simpan
-    document.getElementById('save-pdf').addEventListener('click', async () => {
-        if (!pdfDoc) return alert("Pilih file PDF dulu!");
+    // Simpan ke File Baru
+    document.getElementById('save-pdf').onclick = function() {
+        if (!pdfDoc) return;
 
-        const sigData = signaturePad.toDataURL('image/png');
-        
-        // Buat PDF baru dengan ukuran yang sama persis dengan tampilan sekarang
+        const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({
             orientation: pdfCanvas.width > pdfCanvas.height ? 'l' : 'p',
             unit: 'px',
             format: [pdfCanvas.width, pdfCanvas.height]
         });
 
-        // Gambar 1: Halaman PDF asli (diambil dari canvas)
+        // Masukkan halaman PDF (dari canvas)
         const pdfImg = pdfCanvas.toDataURL('image/jpeg', 1.0);
         pdf.addImage(pdfImg, 'JPEG', 0, 0, pdfCanvas.width, pdfCanvas.height);
 
-        // Gambar 2: Tanda tangan (di atasnya)
+        // Timpa dengan tanda tangan jika ada
         if (!signaturePad.isEmpty()) {
+            const sigData = signaturePad.toDataURL('image/png');
             pdf.addImage(sigData, 'PNG', 0, 0, pdfCanvas.width, pdfCanvas.height);
         }
 
         pdf.save('hasil-tanda-tangan.pdf');
-    });
+    };
 </script>
 
 </body>
