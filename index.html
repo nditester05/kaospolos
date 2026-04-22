@@ -3,165 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Reader & Signer - GitHub Pages</title>
+    <title>PDF Reader & Signer - GitHub Fixed</title>
     
-    <!-- Memanggil file lokal dari repo GitHub kamu -->
+    <!-- Memanggil file lokal -->
     <script src="pdf.min.js"></script>
     
-    <!-- Library pendukung tetap menggunakan CDN agar file html tetap ringan -->
+    <!-- Library pendukung tetap menggunakan CDN -->
     <script src="https://cloudflare.com"></script>
     <script src="https://jsdelivr.net"></script>
 
     <style>
-        :root { --primary: #2563eb; --success: #059669; --danger: #dc2626; }
-        body { font-family: sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        
-        .toolbar { 
-            background: white; padding: 15px; border-radius: 10px; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
-            margin-bottom: 20px; width: 100%; max-width: 800px;
-            display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
-        }
-
-        #pdf-container { 
-            position: relative; border: 1px solid #cbd5e1; 
-            background: white; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-            touch-action: none; /* Penting untuk mobile agar tidak scrolling saat ttd */
-        }
-
-        canvas { display: block; max-width: 100%; height: auto !important; }
-        #signature-layer { position: absolute; top: 0; left: 0; z-index: 10; cursor: crosshair; }
-
-        button { 
-            padding: 8px 16px; border: none; border-radius: 6px; 
-            background: var(--primary); color: white; cursor: pointer; font-weight: bold;
-        }
-        .btn-clear { background: var(--danger); }
-        .btn-save { background: var(--success); }
-        .status { color: #64748b; font-size: 14px; margin-top: 5px; width: 100%; text-align: center; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #e2e8f0; padding: 15px; }
+        .toolbar { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; width: 100%; max-width: 800px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        #pdf-viewport { position: relative; border: 2px solid #94a3b8; background: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: auto; }
+        canvas { display: block; max-width: 100%; }
+        #sig-canvas { position: absolute; top: 0; left: 0; z-index: 10; cursor: crosshair; }
+        button { padding: 10px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: 600; }
+        .btn-danger { background: #ef4444; }
+        .status-bar { font-size: 13px; color: #475569; margin-top: 5px; width: 100%; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
-    <input type="file" id="file-input" accept="application/pdf">
-    <button id="prev-page">◀</button>
-    <span style="align-self:center">Hal: <span id="page-num">0</span> / <span id="page-count">0</span></span>
-    <button id="next-page">▶</button>
-    <button class="btn-clear" id="clear-sig">Hapus TTD</button>
-    <button class="btn-save" id="save-pdf">Simpan PDF</button>
-    <div id="msg" class="status">Silakan pilih file PDF</div>
+    <input type="file" id="upload" accept="application/pdf">
+    <button id="prev">◀ Prev</button>
+    <span style="align-self:center">Hal: <span id="num">0</span> / <span id="total">0</span></span>
+    <button id="next">Next ▶</button>
+    <button class="btn-danger" id="clear">Hapus Coretan</button>
+    <button style="background: #10b981" id="save">Simpan PDF</button>
+    <div id="status" class="status-bar">Status: Menunggu file...</div>
 </div>
 
-<div id="pdf-container">
-    <canvas id="pdf-render"></canvas>
-    <canvas id="signature-layer"></canvas>
+<div id="pdf-viewport">
+    <canvas id="pdf-canvas"></canvas>
+    <canvas id="sig-canvas"></canvas>
 </div>
 
 <script>
-    // 1. KONFIGURASI WORKER (Penting agar PDF tampil di GitHub Pages)
-    // Mencari file pdf.worker.min.js di folder yang sama
-    if (window['pdfjs-dist/build/pdf']) {
-        var pdfjsLib = window['pdfjs-dist/build/pdf'];
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+    // FIX 1: Deteksi Library PDF.js di GitHub Pages
+    const pdfjs = window['pdfjs-dist/build/pdf'];
+    // Pastikan path worker benar (relatif terhadap index.html)
+    pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+
+    let pdfDoc = null, curPage = 1, signature = null;
+    const canvas = document.getElementById('pdf-canvas');
+    const sCanvas = document.getElementById('sig-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Inisialisasi Tanda Tangan
+    function initSig() {
+        if (signature) signature.off();
+        signature = new SignaturePad(sCanvas, { penColor: 'black' });
     }
 
-    let pdfDoc = null,
-        pageNum = 1,
-        pdfCanvas = document.getElementById('pdf-render'),
-        sigCanvas = document.getElementById('signature-layer'),
-        ctx = pdfCanvas.getContext('2d'),
-        signaturePad = null;
-
-    // Inisialisasi area tanda tangan
-    function initSignature() {
-        if (signaturePad) signaturePad.off();
-        signaturePad = new SignaturePad(sigCanvas, {
-            backgroundColor: 'rgba(0,0,0,0)',
-            penColor: 'black'
-        });
-    }
-
-    // Render halaman PDF ke Canvas
-    async function renderPage(num) {
+    // Render Halaman
+    async function showPage(n) {
         try {
-            const page = await pdfDoc.getPage(num);
-            const viewport = page.getViewport({ scale: 1.5 });
-
-            pdfCanvas.height = viewport.height;
-            pdfCanvas.width = viewport.width;
-            sigCanvas.height = viewport.height;
-            sigCanvas.width = viewport.width;
-
-            const renderContext = { canvasContext: ctx, viewport: viewport };
-            await page.render(renderContext).promise;
+            const page = await pdfDoc.getPage(n);
+            const vp = page.getViewport({ scale: 1.5 });
             
-            document.getElementById('page-num').textContent = num;
-            initSignature();
-            document.getElementById('msg').textContent = "Siap ditandatangani";
-        } catch (err) {
-            console.error(err);
-            document.getElementById('msg').textContent = "Error render: " + err.message;
+            canvas.height = vp.height; canvas.width = vp.width;
+            sCanvas.height = vp.height; sCanvas.width = vp.width;
+
+            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            document.getElementById('num').textContent = n;
+            initSig();
+            document.getElementById('status').innerText = "Status: Siap ditandatangani";
+        } catch (e) {
+            document.getElementById('status').innerText = "Render Error: " + e.message;
         }
     }
 
-    // Event saat pilih file
-    document.getElementById('file-input').addEventListener('change', (e) => {
+    // Handler Upload
+    document.getElementById('upload').onchange = (e) => {
         const file = e.target.files[0];
-        if (!file || file.type !== 'application/pdf') return;
+        if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function() {
-            const typedarray = new Uint8Array(this.result);
-            pdfjsLib.getDocument(typedarray).promise.then(pdf => {
-                pdfDoc = pdf;
-                pageNum = 1;
-                document.getElementById('page-count').textContent = pdf.numPages;
-                renderPage(pageNum);
-            }).catch(err => {
-                document.getElementById('msg').textContent = "Gagal buka PDF: " + err.message;
-            });
+        reader.onload = async function() {
+            try {
+                // FIX 2: Gunakan Uint8Array untuk kompatibilitas tinggi
+                const data = new Uint8Array(this.result);
+                pdfDoc = await pdfjs.getDocument({data: data}).promise;
+                document.getElementById('total').textContent = pdfDoc.numPages;
+                showPage(curPage);
+            } catch (err) {
+                document.getElementById('status').innerText = "Gagal memuat PDF: Versi Worker tidak cocok?";
+            }
         };
         reader.readAsArrayBuffer(file);
-    });
-
-    // Navigasi Halaman
-    document.getElementById('prev-page').onclick = () => {
-        if (pdfDoc && pageNum > 1) { pageNum--; renderPage(pageNum); }
-    };
-    document.getElementById('next-page').onclick = () => {
-        if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); }
     };
 
-    // Hapus Tanda Tangan
-    document.getElementById('clear-sig').onclick = () => {
-        if (signaturePad) signaturePad.clear();
-    };
+    // Navigasi & Simpan
+    document.getElementById('prev').onclick = () => { if(pdfDoc && curPage > 1) showPage(--curPage); };
+    document.getElementById('next').onclick = () => { if(pdfDoc && curPage < pdfDoc.numPages) showPage(++curPage); };
+    document.getElementById('clear').onclick = () => signature.clear();
 
-    // Simpan ke File Baru
-    document.getElementById('save-pdf').onclick = function() {
-        if (!pdfDoc) return;
-
+    document.getElementById('save').onclick = () => {
+        if(!pdfDoc) return;
         const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({
-            orientation: pdfCanvas.width > pdfCanvas.height ? 'l' : 'p',
-            unit: 'px',
-            format: [pdfCanvas.width, pdfCanvas.height]
+        const out = new jsPDF({ 
+            orientation: canvas.width > canvas.height ? 'l' : 'p', 
+            unit: 'px', 
+            format: [canvas.width, canvas.height] 
         });
-
-        // Masukkan halaman PDF (dari canvas)
-        const pdfImg = pdfCanvas.toDataURL('image/jpeg', 1.0);
-        pdf.addImage(pdfImg, 'JPEG', 0, 0, pdfCanvas.width, pdfCanvas.height);
-
-        // Timpa dengan tanda tangan jika ada
-        if (!signaturePad.isEmpty()) {
-            const sigData = signaturePad.toDataURL('image/png');
-            pdf.addImage(sigData, 'PNG', 0, 0, pdfCanvas.width, pdfCanvas.height);
-        }
-
-        pdf.save('hasil-tanda-tangan.pdf');
+        out.addImage(canvas.toDataURL('image/jpeg'), 'JPEG', 0, 0, canvas.width, canvas.height);
+        if(!signature.isEmpty()) out.addImage(signature.toDataURL(), 'PNG', 0, 0, canvas.width, canvas.height);
+        out.save('signed_document.pdf');
     };
 </script>
-
 </body>
 </html>
