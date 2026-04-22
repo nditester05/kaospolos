@@ -2,170 +2,164 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smooth Tank 1990</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Signer App - Single File</title>
+    
+    <!-- Library Dependencies -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://cloudflare.com"></script>
+    <script src="https://jsdelivr.net"></script>
+
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; touch-action: none; }
-        canvas { display: block; touch-action: none; }
+        :root { --primary: #2563eb; --danger: #dc2626; --bg: #f8fafc; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 10px; background: var(--bg);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .toolbar {
+            background: white; padding: 15px; border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            margin-bottom: 20px; width: 100%; max-width: 800px;
+            display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+        }
+        #pdf-wrapper { 
+            position: relative; border: 1px solid #cbd5e1; 
+            background: white; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            overflow: hidden; touch-action: none;
+        }
+        canvas { max-width: 100%; height: auto !important; }
+        #signature-layer { position: absolute; top: 0; left: 0; z-index: 10; cursor: crosshair; }
+        
+        button, input[type="file"]::file-selector-button {
+            padding: 8px 16px; border-radius: 6px; border: none;
+            background: var(--primary); color: white; cursor: pointer; font-weight: 500;
+        }
+        .btn-danger { background: var(--danger); }
+        .page-info { align-self: center; font-size: 14px; font-weight: bold; }
+        
+        /* Mobile adjustment */
+        @media (max-width: 600px) {
+            .toolbar { flex-direction: column; }
+            button { width: 100%; }
+        }
     </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
+
+<div class="toolbar">
+    <input type="file" id="file-input" accept="application/pdf">
+    <button id="prev-page">◀ Prev</button>
+    <span class="page-info"><span id="page-num">0</span> / <span id="page-count">0</span></span>
+    <button id="next-page">Next ▶</button>
+    <button class="btn-danger" id="clear-sig">Hapus Tanda Tangan</button>
+    <button style="background: #059669;" id="save-pdf">Simpan & Download</button>
+</div>
+
+<div id="pdf-wrapper">
+    <!-- Canvas untuk menampilkan PDF -->
+    <canvas id="pdf-render"></canvas>
+    <!-- Canvas transparan di atasnya untuk tanda tangan -->
+    <canvas id="signature-layer"></canvas>
+</div>
 
 <script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+    const { jsPDF } = window.jspdf;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cloudflare.com';
 
-    let W, H, TILE_SIZE;
-    let lastTime = 0;
-    let bullets = [];
-    let enemies = [];
-    const worldMap = [
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-        [0,1,1,0,1,1,0,0,0,1,1,0,1,1,0],
-        [0,1,0,0,0,1,0,1,0,1,0,0,0,1,0],
-        [0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
-        [0,1,0,1,1,1,0,1,0,1,1,1,0,1,0],
-        [0,1,0,0,0,0,0,0,0,0,0,0,0,1,0],
-        [0,1,1,0,1,1,1,1,1,1,1,0,1,1,0]
-    ];
+    let pdfDoc = null,
+        pageNum = 1,
+        pdfCanvas = document.getElementById('pdf-render'),
+        sigCanvas = document.getElementById('signature-layer'),
+        ctx = pdfCanvas.getContext('2d'),
+        signaturePad = null;
 
-    // Kontrol
-    const joy = { ox: 120, oy: 0, cx: 120, cy: 0, r: 60, active: false };
-    const btn = { x: 0, y: 0, r: 50 };
-
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        W = canvas.width; H = canvas.height;
-        TILE_SIZE = Math.floor(W / 18);
-        joy.oy = H - 120; joy.cy = joy.oy;
-        btn.x = W - 120; btn.y = H - 120;
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    class Tank {
-        constructor(x, y, color, isPlayer = false) {
-            this.x = x; this.y = y;
-            this.size = 30;
-            this.color = color;
-            this.dir = 'up';
-            this.speed = isPlayer ? 180 : 120; // Kecepatan per detik (Pixel/Sec)
-            this.isPlayer = isPlayer;
-            this.lastShot = 0;
-        }
-
-        draw() {
-            ctx.fillStyle = this.color;
-            ctx.fillRect(this.x, this.y, this.size, this.size);
-            ctx.fillStyle = "#fff";
-            if(this.dir==='up') ctx.fillRect(this.x+12, this.y-8, 6, 12);
-            if(this.dir==='down') ctx.fillRect(this.x+12, this.y+this.size-4, 6, 12);
-            if(this.dir==='left') ctx.fillRect(this.x-8, this.y+12, 12, 6);
-            if(this.dir==='right') ctx.fillRect(this.x+this.size-4, this.y+12, 12, 6);
-        }
-
-        update(dt, direction) {
-            if(!direction) return;
-            this.dir = direction;
-            let step = this.speed * dt;
-            let nx = this.x, ny = this.y;
-
-            if(direction==='up') ny -= step;
-            if(direction==='down') ny += step;
-            if(direction==='left') nx -= step;
-            if(direction==='right') nx += step;
-
-            if(!this.checkCol(nx, ny)) {
-                this.x = nx; this.y = ny;
-            }
-        }
-
-        checkCol(nx, ny) {
-            if(nx < 0 || nx > W-this.size || ny < 0 || ny > H-this.size) return true;
-            let col = Math.floor((nx + this.size/2) / TILE_SIZE);
-            let row = Math.floor((ny + this.size/2) / TILE_SIZE);
-            return (worldMap[row] && worldMap[row][col] === 1);
-        }
-
-        shoot() {
-            let now = Date.now();
-            if(now - this.lastShot > 400) {
-                bullets.push({ x: this.x+15, y: this.y+15, dir: this.dir, owner: this.isPlayer?'p':'e' });
-                this.lastShot = now;
-            }
-        }
+    // Inisialisasi Signature Pad
+    function initSignature() {
+        if (signaturePad) signaturePad.off(); 
+        signaturePad = new SignaturePad(sigCanvas, {
+            backgroundColor: 'rgba(0,0,0,0)',
+            penColor: 'black'
+        });
     }
 
-    const player = new Tank(TILE_SIZE, TILE_SIZE, '#f1c40f', true);
-
-    // Input Events
-    canvas.addEventListener('touchstart', e => {
-        e.preventDefault();
-        for(let t of e.touches) {
-            if(Math.hypot(t.clientX - btn.x, t.clientY - btn.y) < btn.r) player.shoot();
-            else if(t.clientX < W/2) { joy.active = true; moveJoy(t); }
-        }
-    }, {passive: false});
-
-    canvas.addEventListener('touchmove', e => {
-        if(joy.active) for(let t of e.touches) if(t.clientX < W/2) moveJoy(t);
-    }, {passive: false});
-
-    canvas.addEventListener('touchend', () => { joy.active = false; joy.cx = joy.ox; joy.cy = joy.oy; });
-
-    function moveJoy(t) {
-        let dx = t.clientX - joy.ox, dy = t.clientY - joy.oy;
-        let dist = Math.min(Math.hypot(dx, dy), joy.r);
-        let angle = Math.atan2(dy, dx);
-        joy.cx = joy.ox + Math.cos(angle) * dist;
-        joy.cy = joy.oy + Math.sin(angle) * dist;
-        joy.currentDir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-    }
-
-    // Loop Utama
-    function gameLoop(time) {
-        let dt = (time - lastTime) / 1000;
-        if(dt > 0.1) dt = 0.1; // Cap dt agar tidak lompat saat lag
-        lastTime = time;
-
-        ctx.clearRect(0, 0, W, H);
-
-        // Update & Draw Map
-        worldMap.forEach((row, r) => row.forEach((cell, c) => {
-            if(cell === 1) {
-                ctx.fillStyle = '#8B4513';
-                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1);
-            }
-        }));
-
-        // Player
-        if(joy.active) player.update(dt, joy.currentDir);
-        player.draw();
-
-        // Peluru (Optimasi: Filter peluru yang keluar layar)
-        bullets = bullets.filter(b => {
-            let speed = 400 * dt;
-            if(b.dir==='up') b.y -= speed; if(b.dir==='down') b.y += speed;
-            if(b.dir==='left') b.x -= speed; if(b.dir==='right') b.x += speed;
-
-            let col = Math.floor(b.x / TILE_SIZE), row = Math.floor(b.y / TILE_SIZE);
-            if(worldMap[row] && worldMap[row][col] === 1) { worldMap[row][col] = 0; return false; }
+    // Tampilkan Halaman PDF
+    function renderPage(num) {
+        pdfDoc.getPage(num).then(page => {
+            // Sesuaikan resolusi untuk layar jernih (desktop & mobile)
+            const viewport = page.getViewport({ scale: 1.5 });
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.width = viewport.width;
             
-            ctx.fillStyle = "yellow"; ctx.fillRect(b.x-2, b.y-2, 5, 5);
-            return (b.x > 0 && b.x < W && b.y > 0 && b.y < H);
+            // Samakan ukuran canvas tanda tangan dengan canvas PDF
+            sigCanvas.height = viewport.height;
+            sigCanvas.width = viewport.width;
+
+            const renderContext = { canvasContext: ctx, viewport: viewport };
+            page.render(renderContext).promise.then(() => {
+                initSignature(); // Reset signature pad setiap ganti halaman
+            });
+
+            document.getElementById('page-num').textContent = num;
+        });
+    }
+
+    // Handler Pilih File
+    document.getElementById('file-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file || file.type !== 'application/pdf') return;
+
+        const reader = new FileReader();
+        reader.onload = function() {
+            const typedarray = new Uint8Array(this.result);
+            pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                pdfDoc = pdf;
+                pageNum = 1;
+                document.getElementById('page-count').textContent = pdf.numPages;
+                renderPage(pageNum);
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    // Navigasi
+    document.getElementById('prev-page').addEventListener('click', () => {
+        if (pdfDoc && pageNum > 1) { pageNum--; renderPage(pageNum); }
+    });
+    document.getElementById('next-page').addEventListener('click', () => {
+        if (pdfDoc && pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); }
+    });
+
+    // Hapus Coretan
+    document.getElementById('clear-sig').addEventListener('click', () => {
+        if (signaturePad) signaturePad.clear();
+    });
+
+    // Proses Simpan
+    document.getElementById('save-pdf').addEventListener('click', async () => {
+        if (!pdfDoc) return alert("Pilih file PDF dulu!");
+
+        const sigData = signaturePad.toDataURL('image/png');
+        
+        // Buat PDF baru dengan ukuran yang sama persis dengan tampilan sekarang
+        const pdf = new jsPDF({
+            orientation: pdfCanvas.width > pdfCanvas.height ? 'l' : 'p',
+            unit: 'px',
+            format: [pdfCanvas.width, pdfCanvas.height]
         });
 
-        // UI
-        ctx.strokeStyle = "white"; ctx.beginPath(); ctx.arc(joy.ox, joy.oy, joy.r, 0, 7); ctx.stroke();
-        ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.beginPath(); ctx.arc(joy.cx, joy.cy, 25, 0, 7); ctx.fill();
-        ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(btn.x, btn.y, btn.r, 0, 7); ctx.fill();
+        // Gambar 1: Halaman PDF asli (diambil dari canvas)
+        const pdfImg = pdfCanvas.toDataURL('image/jpeg', 1.0);
+        pdf.addImage(pdfImg, 'JPEG', 0, 0, pdfCanvas.width, pdfCanvas.height);
 
-        requestAnimationFrame(gameLoop);
-    }
+        // Gambar 2: Tanda tangan (di atasnya)
+        if (!signaturePad.isEmpty()) {
+            pdf.addImage(sigData, 'PNG', 0, 0, pdfCanvas.width, pdfCanvas.height);
+        }
 
-    requestAnimationFrame(gameLoop);
+        pdf.save('hasil-tanda-tangan.pdf');
+    });
 </script>
+
 </body>
 </html>
