@@ -3,115 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Reader & Signer - GitHub Fixed</title>
-    
-    <!-- Memanggil file lokal -->
-    <script src="pdf.min.js"></script>
-    
-    <!-- Library pendukung tetap menggunakan CDN -->
-    <script src="https://cloudflare.com"></script>
-    <script src="https://jsdelivr.net"></script>
-
+    <title>Visual Video Trimmer</title>
+    <!-- Memuat FFmpeg.wasm dari CDN -->
+    <script src="https://unpkg.com"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #e2e8f0; padding: 15px; }
-        .toolbar { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; width: 100%; max-width: 800px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        #pdf-viewport { position: relative; border: 2px solid #94a3b8; background: white; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: auto; }
-        canvas { display: block; max-width: 100%; }
-        #sig-canvas { position: absolute; top: 0; left: 0; z-index: 10; cursor: crosshair; }
-        button { padding: 10px 18px; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-weight: 600; }
-        .btn-danger { background: #ef4444; }
-        .status-bar { font-size: 13px; color: #475569; margin-top: 5px; width: 100%; text-align: center; }
+        :root { --primary: #007bff; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; flex-direction: column; align-items: center; 
+            padding: 20px; background: #f0f2f5; color: #333;
+        }
+        .container { 
+            background: white; padding: 20px; border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 600px; 
+        }
+        h2 { text-align: center; margin-top: 0; }
+        
+        /* Video Player */
+        video { width: 100%; border-radius: 10px; background: #000; margin-bottom: 15px; }
+
+        /* Slider Styling */
+        .slider-container { margin: 20px 0; position: relative; }
+        input[type="range"] {
+            width: 100%; margin: 10px 0; cursor: pointer;
+        }
+        .time-info { 
+            display: flex; justify-content: space-between; 
+            font-size: 0.9rem; font-weight: bold; color: var(--primary);
+        }
+
+        /* Controls */
+        .controls { display: flex; flex-direction: column; gap: 15px; }
+        .file-input { 
+            border: 2px dashed #ccc; padding: 20px; text-align: center; 
+            border-radius: 10px; cursor: pointer; 
+        }
+        button { 
+            padding: 15px; border-radius: 8px; border: none;
+            background: var(--primary); color: white; font-size: 1rem;
+            font-weight: bold; cursor: pointer; transition: 0.3s;
+        }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button:hover:not(:disabled) { background: #0056b3; }
+
+        #status { 
+            margin-top: 15px; font-size: 0.85rem; text-align: center; color: #666; 
+        }
+
+        /* Responsive Mobile */
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .container { padding: 15px; }
+        }
     </style>
 </head>
 <body>
 
-<div class="toolbar">
-    <input type="file" id="upload" accept="application/pdf">
-    <button id="prev">◀ Prev</button>
-    <span style="align-self:center">Hal: <span id="num">0</span> / <span id="total">0</span></span>
-    <button id="next">Next ▶</button>
-    <button class="btn-danger" id="clear">Hapus Coretan</button>
-    <button style="background: #10b981" id="save">Simpan PDF</button>
-    <div id="status" class="status-bar">Status: Menunggu file...</div>
-</div>
+<div class="container">
+    <h2>Video Trimmer</h2>
+    
+    <div class="file-input" onclick="document.getElementById('uploader').click()">
+        Ganti/Pilih Video
+        <input type="file" id="uploader" accept="video/*" style="display:none">
+    </div>
 
-<div id="pdf-viewport">
-    <canvas id="pdf-canvas"></canvas>
-    <canvas id="sig-canvas"></canvas>
+    <video id="player" controls></video>
+
+    <div class="slider-container">
+        <div class="time-info">
+            <span>Mulai: <span id="startVal">0</span>s</span>
+            <span>Selesai: <span id="endVal">0</span>s</span>
+        </div>
+        <label>Titik Mulai:</label>
+        <input type="range" id="startRange" min="0" value="0" step="0.1">
+        
+        <label>Titik Selesai:</label>
+        <input type="range" id="endRange" min="0" value="0" step="0.1">
+    </div>
+
+    <div class="controls">
+        <button id="trimBtn">Potong & Simpan Video</button>
+        <p id="status">Pilih video untuk memulai.</p>
+    </div>
 </div>
 
 <script>
-    // FIX 1: Deteksi Library PDF.js di GitHub Pages
-    const pdfjs = window['pdfjs-dist/build/pdf'];
-    // Pastikan path worker benar (relatif terhadap index.html)
-    pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
 
-    let pdfDoc = null, curPage = 1, signature = null;
-    const canvas = document.getElementById('pdf-canvas');
-    const sCanvas = document.getElementById('sig-canvas');
-    const ctx = canvas.getContext('2d');
+    const uploader = document.getElementById('uploader');
+    const player = document.getElementById('player');
+    const startRange = document.getElementById('startRange');
+    const endRange = document.getElementById('endRange');
+    const startVal = document.getElementById('startVal');
+    const endVal = document.getElementById('endVal');
+    const trimBtn = document.getElementById('trimBtn');
+    const status = document.getElementById('status');
 
-    // Inisialisasi Tanda Tangan
-    function initSig() {
-        if (signature) signature.off();
-        signature = new SignaturePad(sCanvas, { penColor: 'black' });
-    }
-
-    // Render Halaman
-    async function showPage(n) {
-        try {
-            const page = await pdfDoc.getPage(n);
-            const vp = page.getViewport({ scale: 1.5 });
-            
-            canvas.height = vp.height; canvas.width = vp.width;
-            sCanvas.height = vp.height; sCanvas.width = vp.width;
-
-            await page.render({ canvasContext: ctx, viewport: vp }).promise;
-            document.getElementById('num').textContent = n;
-            initSig();
-            document.getElementById('status').innerText = "Status: Siap ditandatangani";
-        } catch (e) {
-            document.getElementById('status').innerText = "Render Error: " + e.message;
-        }
-    }
-
-    // Handler Upload
-    document.getElementById('upload').onchange = (e) => {
+    // 1. Saat Video Dimuat
+    uploader.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = async function() {
-            try {
-                // FIX 2: Gunakan Uint8Array untuk kompatibilitas tinggi
-                const data = new Uint8Array(this.result);
-                pdfDoc = await pdfjs.getDocument({data: data}).promise;
-                document.getElementById('total').textContent = pdfDoc.numPages;
-                showPage(curPage);
-            } catch (err) {
-                document.getElementById('status').innerText = "Gagal memuat PDF: Versi Worker tidak cocok?";
-            }
+        const url = URL.createObjectURL(file);
+        player.src = url;
+
+        // Tunggu metadata video (durasi) dimuat
+        player.onloadedmetadata = () => {
+            const duration = player.duration.toFixed(1);
+            startRange.max = duration;
+            endRange.max = duration;
+            endRange.value = duration;
+            startVal.innerText = "0";
+            endVal.innerText = duration;
+            status.innerText = "Siap memotong. Geser slider untuk menentukan durasi.";
         };
-        reader.readAsArrayBuffer(file);
     };
 
-    // Navigasi & Simpan
-    document.getElementById('prev').onclick = () => { if(pdfDoc && curPage > 1) showPage(--curPage); };
-    document.getElementById('next').onclick = () => { if(pdfDoc && curPage < pdfDoc.numPages) showPage(++curPage); };
-    document.getElementById('clear').onclick = () => signature.clear();
+    // 2. Update Nilai Slider & Preview Video
+    startRange.oninput = () => {
+        if (parseFloat(startRange.value) >= parseFloat(endRange.value)) {
+            startRange.value = endRange.value - 0.1;
+        }
+        startVal.innerText = startRange.value;
+        player.currentTime = startRange.value; // Preview posisi mulai
+    };
 
-    document.getElementById('save').onclick = () => {
-        if(!pdfDoc) return;
-        const { jsPDF } = window.jspdf;
-        const out = new jsPDF({ 
-            orientation: canvas.width > canvas.height ? 'l' : 'p', 
-            unit: 'px', 
-            format: [canvas.width, canvas.height] 
-        });
-        out.addImage(canvas.toDataURL('image/jpeg'), 'JPEG', 0, 0, canvas.width, canvas.height);
-        if(!signature.isEmpty()) out.addImage(signature.toDataURL(), 'PNG', 0, 0, canvas.width, canvas.height);
-        out.save('signed_document.pdf');
+    endRange.oninput = () => {
+        if (parseFloat(endRange.value) <= parseFloat(startRange.value)) {
+            endRange.value = parseFloat(startRange.value) + 0.1;
+        }
+        endVal.innerText = endRange.value;
+        player.currentTime = endRange.value; // Preview posisi selesai
+    };
+
+    // 3. Proses Pemotongan
+    trimBtn.onclick = async () => {
+        const file = uploader.files[0];
+        if (!file) return alert("Pilih video terlebih dahulu!");
+
+        trimBtn.disabled = true;
+        status.innerText = "Memuat engine FFmpeg (pertama kali mungkin agak lama)...";
+
+        if (!ffmpeg.isLoaded()) await ffmpeg.load();
+
+        status.innerText = "Sedang memotong video... Jangan tutup halaman ini.";
+        
+        const { name } = file;
+        const startTime = startRange.value;
+        const duration = (parseFloat(endRange.value) - parseFloat(startTime)).toFixed(1);
+
+        // Menulis file ke sistem FFmpeg
+        ffmpeg.FS('writeFile', name, await fetchFile(file));
+
+        // Jalankan perintah: -ss (mulai), -t (durasi), -c copy (tanpa re-encode agar cepat)
+        await ffmpeg.run('-i', name, '-ss', startTime.toString(), '-t', duration.toString(), '-c', 'copy', 'output.mp4');
+
+        // Baca hasil
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+
+        // Download otomatis
+        const downloadUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'cut_' + name;
+        a.click();
+
+        status.innerText = "Berhasil! Video telah terpotong dan diunduh.";
+        trimBtn.disabled = false;
     };
 </script>
+
 </body>
 </html>
