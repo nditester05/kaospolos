@@ -3,187 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Potong Video Web - Mobile & Desktop</title>
+    <title>Video Trimmer Pro</title>
 
-    <!-- 1. Skrip Keamanan untuk GitHub Pages (WAJIB ADA) -->
+    <!-- 1. WAJIB: Keamanan untuk GitHub Pages -->
     <script src="coi-serviceworker.min.js"></script>
 
-    <!-- 2. Library FFmpeg.wasm -->
+    <!-- 2. WAJIB: Library FFmpeg -->
     <script src="https://unpkg.com"></script>
 
     <style>
-        :root { --primary: #007bff; --bg: #f8f9fa; }
-        body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            background-color: var(--bg); margin: 0; padding: 20px;
-            display: flex; justify-content: center;
-        }
-        .app-container {
-            background: white; padding: 20px; border-radius: 12px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            width: 100%; max-width: 500px;
-        }
-        h2 { text-align: center; color: #333; margin-bottom: 20px; }
-        
-        /* Video Styling */
-        .video-wrapper {
-            background: #000; border-radius: 8px; overflow: hidden;
-            line-height: 0; margin-bottom: 15px;
-        }
-        video { width: 100%; height: auto; max-height: 300px; }
-
-        /* Controls */
-        .input-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
-        input[type="file"] { width: 100%; padding: 10px 0; }
-        
-        .slider-box { background: #f1f3f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        input[type="range"] { width: 100%; cursor: pointer; margin: 10px 0; }
-        
-        .time-display { 
-            display: flex; justify-content: space-between; 
-            font-family: monospace; font-size: 14px; color: var(--primary);
-        }
-
-        button {
-            width: 100%; padding: 15px; border: none; border-radius: 8px;
-            background: var(--primary); color: white; font-size: 16px;
-            font-weight: bold; cursor: pointer; transition: 0.3s;
-        }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        
-        #status {
-            margin-top: 15px; font-size: 13px; text-align: center;
-            color: #666; line-height: 1.5;
-        }
+        :root { --p: #007bff; }
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        video { width: 100%; border-radius: 8px; background: #000; margin: 15px 0; }
+        .range-box { background: #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        input[type="range"] { width: 100%; }
+        button { width: 100%; padding: 15px; background: var(--p); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        button:disabled { background: #ccc; }
+        #status { font-size: 12px; color: #666; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <h2>Video Trimmer</h2>
+<div class="card">
+    <h3>Potong Video</h3>
+    <input type="file" id="uploader" accept="video/*">
+    
+    <video id="player" controls playsinline muted></video>
 
-    <div class="input-group">
-        <label>Pilih Video:</label>
-        <input type="file" id="uploader" accept="video/*">
-    </div>
-
-    <div class="video-wrapper">
-        <!-- playsinline & muted penting agar video muncul di mobile -->
-        <video id="player" controls playsinline muted></video>
-    </div>
-
-    <div class="slider-box">
-        <div class="time-display">
-            <span>Mulai: <span id="startVal">0</span>s</span>
-            <span>Selesai: <span id="endVal">0</span>s</span>
+    <div class="range-box">
+        <div style="display:flex; justify-content: space-between; font-size: 14px;">
+            <span>Mulai: <b id="startVal">0</b>s</span>
+            <span>Akhir: <b id="endVal">0</b>s</span>
         </div>
-        <label>Titik Mulai:</label>
         <input type="range" id="startRange" min="0" value="0" step="0.1">
-        
-        <label>Titik Akhir:</label>
         <input type="range" id="endRange" min="0" value="0" step="0.1">
     </div>
 
-    <button id="trimBtn">Gunting & Download</button>
-    <p id="status">Silakan pilih file video (MP4 disarankan).</p>
+    <button id="trimBtn">Potong & Simpan</button>
+    <p id="status">Pilih video untuk memulai.</p>
 </div>
 
 <script>
+    // PASTIKAN HANYA ADA SATU DEKLARASI DI SINI
     const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: true });
+    const ffmpegInstance = createFFmpeg({ log: true }); // Saya ganti namanya agar tidak bentrok
 
     const uploader = document.getElementById('uploader');
     const player = document.getElementById('player');
     const startRange = document.getElementById('startRange');
     const endRange = document.getElementById('endRange');
-    const startVal = document.getElementById('startVal');
-    const endVal = document.getElementById('endVal');
     const trimBtn = document.getElementById('trimBtn');
     const status = document.getElementById('status');
 
-    // 1. Penanganan Upload dan Munculkan Preview
-    uploader.onchange = (e) => {
-        const file = e.target.files[0]; // Ambil file pertama
+    uploader.onchange = async (e) => {
+        const file = e.target.files[0];
         if (!file) return;
 
-        const url = URL.createObjectURL(file);
-        player.src = url;
-        player.load(); // Refresh player
-
+        player.src = URL.createObjectURL(file);
         player.onloadedmetadata = () => {
-            const duration = player.duration.toFixed(1);
-            startRange.max = duration;
-            endRange.max = duration;
-            endRange.value = duration;
-            startVal.innerText = "0";
-            endVal.innerText = duration;
-            status.innerText = "Video dimuat. Tentukan durasi lalu tekan tombol.";
+            const dur = player.duration.toFixed(1);
+            startRange.max = dur;
+            endRange.max = dur;
+            endRange.value = dur;
+            document.getElementById('endVal').innerText = dur;
+            status.innerText = "Video siap dipotong.";
         };
     };
 
-    // 2. Update Slider
     startRange.oninput = () => {
         if (parseFloat(startRange.value) >= parseFloat(endRange.value)) {
             startRange.value = parseFloat(endRange.value) - 0.1;
         }
-        startVal.innerText = startRange.value;
-        player.currentTime = startRange.value; // Geser video ke waktu mulai
+        document.getElementById('startVal').innerText = startRange.value;
+        player.currentTime = startRange.value;
     };
 
     endRange.oninput = () => {
         if (parseFloat(endRange.value) <= parseFloat(startRange.value)) {
             endRange.value = parseFloat(startRange.value) + 0.1;
         }
-        endVal.innerText = endRange.value;
-        player.currentTime = endRange.value; // Geser video ke waktu akhir
+        document.getElementById('endVal').innerText = endRange.value;
+        player.currentTime = endRange.value;
     };
 
-    // 3. Proses Pemotongan Video
     trimBtn.onclick = async () => {
         const file = uploader.files[0];
-        if (!file) return alert("Pilih video dulu!");
+        if (!file) return;
+
+        trimBtn.disabled = true;
+        status.innerText = "Memuat engine (Sabar ya)...";
 
         try {
-            trimBtn.disabled = true;
-            status.innerText = "Sedang menyiapkan mesin pemroses...";
+            if (!ffmpegInstance.isLoaded()) await ffmpegInstance.load();
 
-            if (!ffmpeg.isLoaded()) await ffmpeg.load();
+            status.innerText = "Sedang memproses... Tunggu sampai selesai.";
+            
+            const start = startRange.value;
+            const duration = (parseFloat(endRange.value) - parseFloat(start)).toFixed(1);
 
-            const startTime = startRange.value;
-            const endTime = endRange.value;
-            const duration = (parseFloat(endTime) - parseFloat(startTime)).toFixed(1);
+            ffmpegInstance.FS('writeFile', 'input.mp4', await fetchFile(file));
 
-            status.innerText = "Memproses pemotongan... (Jangan tutup halaman)";
+            // Gunakan perintah copy agar cepat
+            await ffmpegInstance.run('-ss', start.toString(), '-i', 'input.mp4', '-t', duration.toString(), '-c', 'copy', 'output.mp4');
 
-            // Masukkan file ke memori FFmpeg
-            ffmpeg.FS('writeFile', 'input_video', await fetchFile(file));
-
-            // Eksekusi pemotongan
-            await ffmpeg.run(
-                '-ss', startTime.toString(), 
-                '-i', 'input_video', 
-                '-t', duration.toString(), 
-                '-c', 'copy', 
-                'output.mp4'
-            );
-
-            // Baca hasil pemotongan
-            const data = ffmpeg.FS('readFile', 'output.mp4');
-
-            // Download Otomatis
-            const downloadUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            const data = ffmpegInstance.FS('readFile', 'output.mp4');
+            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            
             const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = `hasil_potong_${Date.now()}.mp4`;
-            document.body.appendChild(a);
+            a.href = url;
+            a.download = 'video_potong.mp4';
             a.click();
-            document.body.removeChild(a);
 
-            status.innerText = "Selesai! Video berhasil diunduh.";
+            status.innerText = "Selesai! Video diunduh.";
         } catch (err) {
             console.error(err);
-            status.innerText = "Terjadi kesalahan. Pastikan browser mendukung SharedArrayBuffer.";
+            status.innerText = "Error: " + err.message;
         } finally {
             trimBtn.disabled = false;
         }
