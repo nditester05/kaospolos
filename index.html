@@ -2,128 +2,285 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Trimmer Pro</title>
-
-    <!-- 1. WAJIB: Keamanan untuk GitHub Pages -->
-    <script src="coi-serviceworker.min.js"></script>
-
-    <!-- 2. WAJIB: Library FFmpeg -->
-    <script src="https://unpkg.com"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Emoji Defense - Level & Effect</title>
     <style>
-        :root { --p: #007bff; }
-        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        video { width: 100%; border-radius: 8px; background: #000; margin: 15px 0; }
-        .range-box { background: #eee; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        input[type="range"] { width: 100%; }
-        button { width: 100%; padding: 15px; background: var(--p); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        button:disabled { background: #ccc; }
-        #status { font-size: 12px; color: #666; text-align: center; margin-top: 10px; }
+        :root { --cell-w: 65px; --cell-h: 80px; }
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: none; }
+        
+        body { 
+            margin: 0; background: #121212; color: white; font-family: sans-serif; 
+            display: flex; flex-direction: column; align-items: center; overflow: hidden; 
+        }
+
+        #ui { 
+            width: 100%; max-width: 600px; display: flex; justify-content: space-around; 
+            padding: 10px; background: #222; border-bottom: 4px solid #333; font-size: 0.9rem; 
+        }
+
+        #grid { 
+            position: relative; display: grid; 
+            grid-template-columns: repeat(6, var(--cell-w)); 
+            grid-template-rows: repeat(3, var(--cell-h)); 
+            background: #388e3c; border: 5px solid #1b5e20; 
+            background-image: linear-gradient(#4caf50 50%, #43a047 50%); 
+            background-size: 100% calc(var(--cell-h) * 2); 
+        }
+
+        .cell { 
+            width: var(--cell-w); height: var(--cell-h); 
+            border: 1px solid rgba(255,255,255,0.05); z-index: 5; cursor: pointer; 
+        }
+
+        .entity { 
+            position: absolute; width: var(--cell-w); height: var(--cell-h); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            font-size: 35px; pointer-events: none; z-index: 10; transition: filter 0.2s; 
+        }
+
+        .hp-bar-bg { width: 35px; height: 5px; background: #444; border-radius: 3px; margin-top: 5px; overflow: hidden; }
+        .hp-bar-fill { height: 100%; background: #ffeb3b; width: 100%; transition: width 0.2s; }
+
+        #shop { display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap; justify-content: center; }
+        .seed { 
+            width: 70px; height: 85px; background: #333; border: 3px solid #555; 
+            border-radius: 8px; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; cursor: pointer; 
+        }
+        .seed.locked { opacity: 0.2; cursor: not-allowed; }
+        .seed.selected { border-color: #ffeb3b; background: #444; transform: scale(1.05); }
+        .seed b { font-size: 24px; }
+        .seed span { color: #ffeb3b; font-weight: bold; font-size: 12px; }
+
+        /* Level Up Modal */
+        .level-up { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: rgba(0,0,0,0.95); padding: 25px; border-radius: 15px; 
+            text-align: center; display: none; z-index: 200; border: 2px solid yellow; 
+        }
+
+        #game-over { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.8); display: none; 
+            flex-direction: column; align-items: center; justify-content: center; z-index: 100; 
+        }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h3>Potong Video</h3>
-    <input type="file" id="uploader" accept="video/*">
-    
-    <video id="player" controls playsinline muted></video>
+<div id="ui">
+    <div>☀️ <span id="sun-count">100</span></div>
+    <div>⭐ Lvl: <span id="lvl-display">1</span></div>
+    <div>🧟 Sisa: <span id="z-rem">5</span></div>
+    <div>🏆 Skor: <span id="score">0</span></div>
+</div>
 
-    <div class="range-box">
-        <div style="display:flex; justify-content: space-between; font-size: 14px;">
-            <span>Mulai: <b id="startVal">0</b>s</span>
-            <span>Akhir: <b id="endVal">0</b>s</span>
-        </div>
-        <input type="range" id="startRange" min="0" value="0" step="0.1">
-        <input type="range" id="endRange" min="0" value="0" step="0.1">
-    </div>
+<div style="padding: 15px;"><div id="grid"></div></div>
 
-    <button id="trimBtn">Potong & Simpan</button>
-    <p id="status">Pilih video untuk memulai.</p>
+<div id="shop">
+    <div class="seed" onclick="selectItem('sun', 50, this)"><b>🌻</b><span>50</span></div>
+    <div class="seed" onclick="selectItem('pea', 100, this)"><b>🌵</b><span>100</span></div>
+    <div class="seed" onclick="selectItem('wall', 50, this)"><b>⛄️</b><span>50</span></div>
+    <div class="seed locked" id="seed-double" onclick="selectItem('double', 175, this)"><b>🌵🌵</b><span>175</span></div>
+    <div class="seed locked" id="seed-bomb" onclick="selectItem('bomb', 25, this)"><b>💣</b><span>25</span></div>
+    <div class="seed locked" id="wall2" onclick="selectItem('wall2', 100, this)"><b>☃️</b><span>100</span></div>
+</div>
+
+<div id="level-modal" class="level-up">
+    <h2 style="color: yellow; margin-top:0;">LEVEL UP!</h2>
+    <p id="level-msg" style="white-space: pre-line;"></p>
+    <button onclick="closeLevelModal()" style="padding: 10px 30px; background:yellow; border:none; font-weight:bold; cursor:pointer;">LANJUT!</button>
+</div>
+
+<div id="game-over">
+    <h1>GAME OVER</h1>
+    <button onclick="location.reload()" style="padding:10px 20px;">Main Lagi</button>
 </div>
 
 <script>
-    // PASTIKAN HANYA ADA SATU DEKLARASI DI SINI
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpegInstance = createFFmpeg({ log: true }); // Saya ganti namanya agar tidak bentrok
+    const gridEl = document.getElementById('grid');
+    const sunEl = document.getElementById('sun-count');
+    const scoreEl = document.getElementById('score');
+    const zRemEl = document.getElementById('z-rem');
+    const lvlEl = document.getElementById('lvl-display');
+    
+    let suns = 100, score = 0, isGameOver = false, selected = null, cost = 0;
+    let level = 1, zSpeed = 0.1, zPerLevel = 5, zSpawned = 0, zKilled = 0;
 
-    const uploader = document.getElementById('uploader');
-    const player = document.getElementById('player');
-    const startRange = document.getElementById('startRange');
-    const endRange = document.getElementById('endRange');
-    const trimBtn = document.getElementById('trimBtn');
-    const status = document.getElementById('status');
-
-    uploader.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        player.src = URL.createObjectURL(file);
-        player.onloadedmetadata = () => {
-            const dur = player.duration.toFixed(1);
-            startRange.max = dur;
-            endRange.max = dur;
-            endRange.value = dur;
-            document.getElementById('endVal').innerText = dur;
-            status.innerText = "Video siap dipotong.";
-        };
-    };
-
-    startRange.oninput = () => {
-        if (parseFloat(startRange.value) >= parseFloat(endRange.value)) {
-            startRange.value = parseFloat(endRange.value) - 0.1;
+    const ROWS = 3, COLS = 6, gridData = [];
+    
+    // Setup Grid Cells
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.onmousedown = (e) => { e.preventDefault(); place(r, c); };
+            gridEl.appendChild(cell);
+            gridData.push({ r, c, full: false });
         }
-        document.getElementById('startVal').innerText = startRange.value;
-        player.currentTime = startRange.value;
-    };
+    }
 
-    endRange.oninput = () => {
-        if (parseFloat(endRange.value) <= parseFloat(startRange.value)) {
-            endRange.value = parseFloat(startRange.value) + 0.1;
-        }
-        document.getElementById('endVal').innerText = endRange.value;
-        player.currentTime = endRange.value;
-    };
+    let plants = [], zombies = [], bullets = [];
 
-    trimBtn.onclick = async () => {
-        const file = uploader.files[0];
-        if (!file) return;
+    function selectItem(type, c, el) {
+        if (el.classList.contains('locked') || isGameOver) return;
+        selected = type; cost = c;
+        document.querySelectorAll('.seed').forEach(s => s.classList.remove('selected'));
+        el.classList.add('selected');
+    }
 
-        trimBtn.disabled = true;
-        status.innerText = "Memuat engine (Sabar ya)...";
-
-        try {
-            if (!ffmpegInstance.isLoaded()) await ffmpegInstance.load();
-
-            status.innerText = "Sedang memproses... Tunggu sampai selesai.";
+    function place(r, c) {
+        const slot = gridData.find(s => s.r === r && s.c === c);
+        if (selected && slot && !slot.full && suns >= cost) {
+            suns -= cost; slot.full = true;
             
-            const start = startRange.value;
-            const duration = (parseFloat(endRange.value) - parseFloat(start)).toFixed(1);
-
-            ffmpegInstance.FS('writeFile', 'input.mp4', await fetchFile(file));
-
-            // Gunakan perintah copy agar cepat
-            await ffmpegInstance.run('-ss', start.toString(), '-i', 'input.mp4', '-t', duration.toString(), '-c', 'copy', 'output.mp4');
-
-            const data = ffmpegInstance.FS('readFile', 'output.mp4');
-            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            const el = document.createElement('div');
+            el.className = 'entity';
+            el.style.left = (c * 65) + 'px';
+            el.style.top = (r * 80) + 'px';
             
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'video_potong.mp4';
-            a.click();
+            let icons = {sun:'🌻', pea:'🌵', wall:'⛄️', double:'🌵🌵', bomb:'💣', wall2:'☃️'};
+            el.innerHTML = `<div>${icons[selected]}</div><div class="hp-bar-bg"><div class="hp-bar-fill"></div></div>`;
+            gridEl.appendChild(el);
 
-            status.innerText = "Selesai! Video diunduh.";
-        } catch (err) {
-            console.error(err);
-            status.innerText = "Error: " + err.message;
-        } finally {
-            trimBtn.disabled = false;
+            plants.push({
+                type: selected, r, c, el, 
+                hp: selected === 'wall' ? 1500 : selected === 'wall2' ? 2500 : 150,
+                maxHP: selected === 'wall' ? 1500 : selected === 'wall2' ? 2500 : 150,
+                hpBar: el.querySelector('.hp-bar-fill'), 
+                lastTick: Date.now()
+            });
+            
+            selected = null;
+            document.querySelectorAll('.seed').forEach(s => s.classList.remove('selected'));
+            updateUI();
         }
-    };
+    }
+
+    function resetLevelTransition() {
+        plants.forEach(p => p.el.remove());
+        zombies.forEach(z => z.el.remove());
+        bullets.forEach(b => b.el.remove());
+        plants = []; zombies = []; bullets = [];
+        gridData.forEach(slot => slot.full = false);
+        selected = null;
+        document.querySelectorAll('.seed').forEach(s => s.classList.remove('selected'));
+    }
+
+    function nextLevel() {
+        resetLevelTransition();
+        level++;
+        zSpeed += 0.1;
+        zPerLevel += 3;
+        zSpawned = 0;
+        zKilled = 0;
+        suns += 100;
+        
+        let msg = `Kecepatan Zombie naik ke ${zSpeed.toFixed(1)}!\nBonus +100 ☀️ dan lapangan dibersihkan.`;
+        if(level === 3) { document.getElementById('seed-double').classList.remove('locked'); msg += "\n🌵🌵 Double Pea Terbuka!"; }
+        if(level === 5) { document.getElementById('seed-bomb').classList.remove('locked'); msg += "\n💣 Potato Mine Terbuka!"; }
+        if(level === 7) { document.getElementById('wall2').classList.remove('locked'); msg += "\n☃️ double wall Terbuka!"; }
+        
+        document.getElementById('level-msg').innerText = msg;
+        document.getElementById('level-modal').style.display = 'block';
+        updateUI();
+    }
+
+    function closeLevelModal() { document.getElementById('level-modal').style.display = 'none'; }
+
+    function spawnZombie() {
+        if (zSpawned >= zPerLevel || isGameOver || document.getElementById('level-modal').style.display === 'block') return;
+        zSpawned++;
+        const r = Math.floor(Math.random() * ROWS);
+        const el = document.createElement('div');
+        el.className = 'entity';
+        el.style.left = gridEl.offsetWidth + 'px';
+        el.style.top = (r * 80) + 'px';
+        el.innerHTML = `<div>🧟</div><div class="hp-bar-bg"><div class="hp-bar-fill"></div></div>`;
+        gridEl.appendChild(el);
+        zombies.push({ r, x: gridEl.offsetWidth, hp: 150 + (level*40), maxHP: 150 + (level*40), el, hpBar: el.querySelector('.hp-bar-fill') });
+    }
+
+    function updateUI() {
+        sunEl.innerText = suns;
+        scoreEl.innerText = score;
+        lvlEl.innerText = level;
+        zRemEl.innerText = Math.max(0, zPerLevel - zKilled);
+    }
+
+    function update() {
+        if (isGameOver) return;
+
+        bullets.forEach((b, i) => {
+            b.x += 10;
+            b.el.style.left = b.x + 'px';
+            const hit = zombies.find(z => z.r === b.r && Math.abs(z.x - b.x) < 20);
+            if (hit) {
+                hit.hp -= 40;
+                hit.hpBar.style.width = (hit.hp/hit.maxHP*100)+'%';
+                b.el.remove(); bullets.splice(i, 1);
+            } else if (b.x > gridEl.offsetWidth) { b.el.remove(); bullets.splice(i, 1); }
+        });
+
+        zombies.forEach((z, i) => {
+            const target = plants.find(p => p.r === z.r && Math.abs((p.c * 65) - z.x) < 30);
+            if (target) {
+                if (target.type === 'bomb') {
+                    z.hp -= 1000;
+                    target.hp = 0;
+                } else {
+                    target.hp -= 1.5;
+                    target.hpBar.style.width = (target.hp/target.maxHP*100)+'%';
+                }
+                if (target.hp <= 0) {
+                    target.el.remove();
+                    const slot = gridData.find(s => s.r === target.r && s.c === target.c);
+                    if(slot) slot.full = false;
+                    plants.splice(plants.indexOf(target), 1);
+                }
+            } else {
+                z.x -= zSpeed;
+                z.el.style.left = z.x + 'px';
+            }
+
+            if (z.hp <= 0) {
+                z.el.remove(); zombies.splice(i, 1);
+                zKilled++; score += 50; updateUI();
+                if (zKilled >= zPerLevel) nextLevel();
+            }
+            if (z.x < -40) { isGameOver = true; document.getElementById('game-over').style.display='flex'; }
+        });
+
+        const now = Date.now();
+        plants.forEach(p => {
+            if (p.type === 'sun' && now - p.lastTick > 6000) { 
+                suns += 25; p.lastTick = now; updateUI();
+                // EFEK BLINK/KEDIP
+                p.el.style.filter = "brightness(2)";
+                setTimeout(() => p.el.style.filter = "none", 300);
+            }
+            if ((p.type === 'pea' || p.type === 'double') && now - p.lastTick > 1500) {
+                if (zombies.some(z => z.r === p.r && z.x > (p.c * 65) && z.x < (COLS * 65))){
+                    const fire = (off = 0) => {
+                        const bEl = document.createElement('div'); bEl.className = 'entity';
+                        bEl.innerText = '⚫️'; bEl.style.fontSize = '14px';
+                        let sx = (p.c * 65) + 35 + off;
+                        bEl.style.left = sx + 'px'; bEl.style.top = (p.r * 80) + 'px';
+                        gridEl.appendChild(bEl);
+                        bullets.push({ r: p.r, x: sx, el: bEl });
+                    };
+                    fire();
+                    if(p.type === 'double') setTimeout(() => fire(15), 150);
+                    p.lastTick = now;
+                }
+            }
+        });
+        requestAnimationFrame(update);
+    }
+
+    setInterval(spawnZombie, 6000);
+    updateUI();
+    requestAnimationFrame(update);
 </script>
-
 </body>
 </html>
